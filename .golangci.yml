@@ -1,0 +1,157 @@
+version: "2"
+run:
+  go: "1.26"
+  issues-exit-code: 1
+  tests: true
+  allow-parallel-runners: false
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+  path-prefix: ""
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - errname
+    - errorlint
+    - gocritic
+    - gocyclo
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - lll
+    - misspell
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - revive
+    - staticcheck
+    - tagliatelle
+    - testifylint
+    - unconvert
+    - unparam
+    - unused
+    - usetesting
+    - wastedassign
+    - whitespace
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+    gocritic:
+      disabled-checks:
+        - dupImport
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+        - wrapperFunc
+        - hugeParam
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      settings:
+        captLocal:
+          paramsOnly: true
+        elseif:
+          skipBalanced: true
+        nestingReduce:
+          bodyWidth: 5
+        rangeExprCopy:
+          sizeThreshold: 512
+          skipTestFuncs: true
+        rangeValCopy:
+          sizeThreshold: 128
+          skipTestFuncs: true
+        truncateCmp:
+          skipArchDependent: true
+        underef:
+          skipRecvDeref: true
+        unnamedResult:
+          checkExported: true
+    gocyclo:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G115  # Integer overflow conversion - too many false positives
+        - G117  # Exported field names matching secret patterns (false positives for Options structs)
+        - G101  # Hardcoded credentials detection (false positives in test files with example data)
+        - G703  # Path traversal taint analysis (false positives for legitimate file operations)
+        - G705  # XSS taint analysis (false positives for stdout/stderr output)
+    lll:
+      line-length: 140
+      tab-width: 1
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: false
+      require-specific: false
+      allow-unused: false
+    revive:
+      severity: warning
+    staticcheck:
+      checks:
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - all
+    tagliatelle:
+      # Prenup's NDJSON runner events (see internal/ui/jsonout, docs/SCHEMA.md)
+      # and the `.prenup.yaml` user config (see internal/config) are stable,
+      # snake_case contracts consumed by users and agent tooling.
+      case:
+        rules:
+          json: snake
+          yaml: snake
+    unparam:
+      check-exported: false
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - mnd
+        path: _test\.go
+      - linters:
+          - lll
+        source: '^//go:generate '
+    paths:
+      - docs
+      - mocks
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 3
+  uniq-by-line: true
+  new: false
+severity:
+  default: error
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/c2fo/)
+      custom-order: false
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/c2fo/
+  exclusions:
+    generated: lax
+    paths:
+      - docs
+      - mocks

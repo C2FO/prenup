@@ -1,0 +1,61 @@
+# Prenup pre-commit hook configuration.
+#
+# Place this file at the root of your git repository as `.prenup.yaml` (or
+# `.prenup.yml`). Run `prenup install` once per repo to wire up the hook.
+#
+# See https://github.com/c2fo/prenup/blob/main/docs/SCHEMA.md for a full
+# reference and https://github.com/c2fo/prenup/blob/main/assets/prenup.schema.json
+# for an editor-friendly JSON schema.
+
+version: 2
+
+# Files whose presence marks a "module". Defaults to [go.mod]. Configurable so
+# polyglot repos can opt in to other languages.
+module_markers:
+  - go.mod
+
+# Files matching any pattern here are ignored for change detection. Syntax is
+# doublestar, so `**` crosses directory boundaries.
+exclude:
+  - ".github/**"
+  - "**/*.yaml"
+  - "**/*.yml"
+
+# Stash unstaged changes around the run so tasks see exactly what will be
+# committed. Override per-task below if needed.
+clean_worktree: true
+
+# 0 means NumCPU. Applies to per-module fan-out within a single task.
+max_parallelism: 0
+
+# auto picks human for TTYs, markdown when piped. Override with --output.
+output: auto
+
+tasks:
+  - name: "Run tests"
+    default_selected: true
+    command: "go test ./..."
+    per_module: true
+    paths:
+      - "**/*.go"
+
+  - name: "Run golangci-lint"
+    default_selected: true
+    command: "golangci-lint run --max-same-issues 0 ./..."
+    per_module: true
+    paths:
+      - "**/*.go"
+
+  - name: "go vet"
+    default_selected: true
+    command: "go vet ./..."
+    per_module: true
+    paths:
+      - "**/*.go"
+
+  - name: "gofmt check"
+    default_selected: true
+    command: "test -z \"$(gofmt -l .)\""
+    per_module: true
+    paths:
+      - "**/*.go"

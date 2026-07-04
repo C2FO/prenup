@@ -1,0 +1,10 @@
+dir: "{{.InterfaceDir}}/mocks"
+filename: "mocks.go"
+pkgname: "mocks"
+structname: "{{.InterfaceName}}"
+template: testify
+packages:
+  github.com/c2fo/prenup/internal/runner:
+    interfaces:
+      Executor:
+      Sink:
