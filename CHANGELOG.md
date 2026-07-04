@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [[v0.1.0](https://github.com/C2FO/prenup/releases/tag/v0.1.0)] - 2026-07-04
 ### Fixed
 - `prenup plan --output` help text no longer advertises unsupported
   `auto`/`human`/`markdown` modes; only `text` (default) and `json` are
@@ -61,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout, then SIGKILL if the task does not exit.
 - Template variables in `command` and `working_dir`: `{{.repo_root}}`,
   `{{.module_root}}`, `{{.module_path}}`, `{{.module_name}}`.
-- Embedded JSON Schema (config `version: 1`) for editor `$schema` integration,
+- Embedded JSON Schema (config `version: 1`) for editor `` integration,
   published at `assets/prenup.schema.json`.
 - GitHub Releases API version check with a one-line update notice; honors
   `PRENUP_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN` for authenticated
