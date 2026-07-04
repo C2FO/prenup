@@ -180,10 +180,10 @@ func TestLoadRunConfigExplicitPath(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "custom.yaml")
-	must.NoError(os.WriteFile(path, []byte("version: 2\ntasks:\n  - name: t\n    command: \"true\"\n"), 0o600))
+	must.NoError(os.WriteFile(path, []byte("version: 1\ntasks:\n  - name: t\n    command: \"true\"\n"), 0o600))
 
 	cfg, err := loadRunConfig(dir, path)
 	must.NoError(err)
-	is.Equal(2, cfg.Version)
+	is.Equal(1, cfg.Version)
 	is.Len(cfg.Tasks, 1)
 }

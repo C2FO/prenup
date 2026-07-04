@@ -1,7 +1,8 @@
-// Package config defines the v2 .prenup.yaml schema, loading, defaults, and validation.
+// Package config defines the .prenup.yaml schema, loading, defaults, and validation.
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,12 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 )
+
+// SchemaVersion is the config schema version this binary understands. It is a
+// plain integer, independent of the prenup release version, and only
+// increments on a breaking change to the config file format. Additive,
+// non-breaking changes do not bump it.
+const SchemaVersion = 1
 
 // ConfigFilenames lists the filenames prenup looks for in the repository root,
 // in order of preference. The first one found is used.
@@ -30,7 +37,7 @@ const (
 	OutputJSON OutputMode = "json"
 )
 
-// Config is the parsed v2 configuration.
+// Config is the parsed .prenup.yaml configuration.
 type Config struct {
 	Version        int        `yaml:"version"`
 	ModuleMarkers  []string   `yaml:"module_markers,omitempty"`
@@ -83,7 +90,7 @@ func (t Task) ParallelEnabled() bool {
 func DefaultConfig() Config {
 	trueVal := true
 	return Config{
-		Version:        2,
+		Version:        SchemaVersion,
 		ModuleMarkers:  []string{"go.mod"},
 		CleanWorktree:  &trueVal,
 		MaxParallelism: 0, // 0 == NumCPU at runtime
@@ -170,9 +177,7 @@ func Parse(data []byte, pathForErrors string) (Config, error) {
 	}
 
 	if cfg.Version == 0 {
-		// Missing `version:` is treated as v1 and rejected to force users
-		// through `prenup migrate`.
-		return Config{}, errors.New(`config is missing "version: 2". If this is a v1 config, run "prenup migrate"`)
+		return Config{}, fmt.Errorf(`config is missing "version: %d"`, SchemaVersion)
 	}
 
 	// Apply defaults for fields YAML unmarshal would leave at zero.
@@ -210,8 +215,15 @@ func Validate(cfg Config) error {
 // validateTopLevel checks all non-task fields.
 func validateTopLevel(cfg Config) []string {
 	var errs []string
-	if cfg.Version != 2 {
-		errs = append(errs, fmt.Sprintf("unsupported config version %d (expected 2)", cfg.Version))
+	switch {
+	case cfg.Version == SchemaVersion:
+		// supported
+	case cfg.Version > SchemaVersion:
+		errs = append(errs, fmt.Sprintf(
+			"config version %d requires a newer version of prenup (this binary supports version %d); please upgrade prenup",
+			cfg.Version, SchemaVersion))
+	default:
+		errs = append(errs, fmt.Sprintf("unsupported config version %d (expected %d)", cfg.Version, SchemaVersion))
 	}
 	switch cfg.Output {
 	case OutputAuto, OutputHuman, OutputMarkdown, OutputJSON, "":
@@ -294,7 +306,32 @@ func versionTypeHint(data []byte) string {
 		return ""
 	}
 	if probe.Version.Kind == yaml.ScalarNode && probe.Version.Tag == "!!str" {
-		return `"version" must be an integer (use "version: 2", not "version: \"2\"")`
+		return `"version" must be an integer (use "version: 1", not "version: \"1\"")`
 	}
 	return ""
 }
+
+// Marshal writes a config back to YAML with a stable layout, led by a
+// discoverability header so anyone who encounters a .prenup.yaml can find out
+// what it is. Any code path that rewrites a config must go through Marshal so
+// the header is preserved.
+func Marshal(cfg Config) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteString(configHeader)
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(cfg); err != nil {
+		return nil, fmt.Errorf("encoding config: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return nil, fmt.Errorf("closing encoder: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// configHeader is the comment block prepended to generated .prenup.yaml files.
+const configHeader = `# .prenup.yaml — pre-commit checks managed by prenup.
+# What is this? Prenup runs configurable checks before each commit, scoped to
+# the parts of the repo that changed. Learn more and install:
+#   https://github.com/c2fo/prenup
+`

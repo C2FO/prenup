@@ -1,7 +1,7 @@
-# Prenup v2 schemas
+# Prenup schemas
 
 This document describes the two stable contracts prenup exposes: the config
-file schema and the JSON event stream schema.
+file schema (currently at `version: 1`) and the JSON event stream schema.
 
 ## Config schema
 
@@ -14,7 +14,7 @@ validation against it.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `version` | integer | — (required) | Must be the integer `2`. Quoted strings (`"2"`) are rejected with a hint. |
+| `version` | integer | — (required) | Config schema version; must be the integer `1`. Quoted strings (`"1"`) are rejected with a hint. |
 | `module_markers` | string[] | `[go.mod]` | Filenames whose presence marks a module directory. |
 | `exclude` | string[] | `[]` | Doublestar globs filtering change detection. |
 | `clean_worktree` | bool | `true` | Stash unstaged changes around task execution. |
@@ -83,7 +83,7 @@ pretty-printed JSON document. See "Plan output" below.
 
 #### `run_started`
 ```json
-{"type":"run_started","time":"...","version":"v2.0.0","repo_root":"/path/to/repo","modules":["pkg/foo"],"tasks":["Run tests"],"message":"Update available v2.0.1 ..."}
+{"type":"run_started","time":"...","version":"v0.1.0","repo_root":"/path/to/repo","modules":["pkg/foo"],"tasks":["Run tests"],"message":"Update available v0.2.0 ..."}
 ```
 - `repo_root` — absolute path of the git repository prenup was invoked
   from. Anchors every subsequent task's `working_dir` so consumers do

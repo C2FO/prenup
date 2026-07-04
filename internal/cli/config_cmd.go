@@ -23,7 +23,7 @@ func newConfigCmd() *cobra.Command {
 func newConfigValidateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate [path]",
-		Short: "Validate a .prenup.yaml file against the v2 schema",
+		Short: "Validate a .prenup.yaml file against the schema",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := git.RepoRoot("")

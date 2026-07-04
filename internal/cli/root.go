@@ -65,7 +65,6 @@ and is equivalent to "prenup run". See the README for configuration.`,
 		newInstallCmd(),
 		newUninstallCmd(),
 		newInitCmd(),
-		newMigrateCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
 	)

@@ -7,9 +7,9 @@ profile: coverage.out
 # Coverage thresholds (percentages, 0-100). Starting conservative for v0.1.0;
 # raise as coverage improves, never lower.
 threshold:
-  total: 40
-  package: 0
-  file: 0
+  total: 55
+  package: 50
+  file: 40
 
 # Exclude generated and non-testable code from coverage statistics.
 exclude:

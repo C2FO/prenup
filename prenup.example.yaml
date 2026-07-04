@@ -1,4 +1,7 @@
-# Prenup pre-commit hook configuration.
+# .prenup.yaml — pre-commit checks managed by prenup.
+# What is this? Prenup runs configurable checks before each commit, scoped to
+# the parts of the repo that changed. Learn more and install:
+#   https://github.com/c2fo/prenup
 #
 # Place this file at the root of your git repository as `.prenup.yaml` (or
 # `.prenup.yml`). Run `prenup install` once per repo to wire up the hook.
@@ -7,7 +10,7 @@
 # reference and https://github.com/c2fo/prenup/blob/main/assets/prenup.schema.json
 # for an editor-friendly JSON schema.
 
-version: 2
+version: 1
 
 # Files whose presence marks a "module". Defaults to [go.mod]. Configurable so
 # polyglot repos can opt in to other languages.

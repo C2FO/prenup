@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/c2fo/prenup/main/assets/prenup.schema.json",
-  "title": "Prenup v2 configuration",
-  "$comment": "This file is the canonical source. assets/prenup.schema.json must stay byte-identical. When adding a v3, replace `version.const: 2` with a `oneOf` over per-version schemas.",
+  "title": "Prenup configuration",
+  "$comment": "This file is the canonical source. assets/prenup.schema.json must stay byte-identical. When adding a version 2, replace `version.const: 1` with a `oneOf` over per-version schemas.",
   "type": "object",
   "required": ["version", "tasks"],
   "additionalProperties": false,
   "properties": {
     "version": {
       "type": "integer",
-      "const": 2,
-      "description": "Config schema version. Must be 2."
+      "const": 1,
+      "description": "Config schema version. Must be 1."
     },
     "module_markers": {
       "type": "array",

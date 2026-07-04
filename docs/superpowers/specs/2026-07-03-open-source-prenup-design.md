@@ -159,6 +159,42 @@ Before pushing to `main`:
   reason to keep it public.
 - Any code refactoring beyond what's needed to remove monorepo assumptions.
 
+## Addendum (2026-07-04): config versioning redesign
+
+Decisions made after the initial extraction, before the first public commit:
+
+1. **Drop the `migrate` command.** The v1→v2 config migration only ever
+   applied to the internal ep-tools format; no public v1 config exists. Remove
+   `internal/cli/migrate.go`, `internal/config/migrate.go` (+ tests), the CLI
+   registration, and all migration docs. Relocate the still-needed `Marshal`
+   helper from `migrate.go` into `config.go`.
+
+2. **Reset the public config baseline to `version: 1`.** The first public
+   config format is version 1 (was `version: 2` from the internal history).
+   Update the schema (`const: 1`), validator, defaults, example config, and
+   docs.
+
+3. **Config schema version is a plain integer, decoupled from the prenup
+   release version.** It increments *only* on a breaking config-format change.
+   Additive, non-breaking changes require neither a version bump nor a
+   migration — new optional fields default sensibly and old configs keep
+   working.
+
+4. **Version handling now (minimal):**
+   - Accept `version: 1`.
+   - Reject a *newer* version (e.g. `version: 2` seen by an older binary) with
+     a clear "this config requires a newer version of prenup" error.
+   - Reject unknown/missing/older-than-1 with the existing "unsupported
+     version" style error.
+   - Defer any in-memory adaptation layer and a `config upgrade` command until
+     `version: 2` actually exists (nothing to convert from yet). The policy is
+     documented in DESIGN.md so the contract is set.
+
+5. **Discoverability header.** Scaffolded configs (`prenup init`) lead with a
+   comment block identifying the tool and linking to the project, so anyone
+   who encounters a `.prenup.yaml` can find out what it is. If prenup ever
+   rewrites a config, it must re-emit this header.
+
 ## Non-negotiables recap
 
 - Fresh git history.

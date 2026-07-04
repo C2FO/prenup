@@ -1,4 +1,9 @@
-# Prenup v2 — Product Requirements Document
+# Prenup — Design & Behavior Specification
+
+This document describes what `prenup` does and how it behaves. It is the
+reference for the tool's design decisions, configuration surface, and runtime
+semantics. For a field-by-field config and event reference, see
+[SCHEMA.md](SCHEMA.md).
 
 ## 1. Overview
 
@@ -16,14 +21,13 @@ the commit when something genuinely fails.
 
 While usable in any repository, Prenup is purpose-built for **Go monorepos and
 multi-module repositories**, where "what changed" naturally maps to one or
-more Go modules. v2 generalizes the module concept via configurable
+more Go modules. The module concept is generalized via configurable
 `module_markers`, opening the door to polyglot repos without breaking the
 core experience.
 
-v2 is also an explicit acknowledgment that prenup is used both by humans and
-by agentic tooling. Output is TUI-first when run interactively, but
-auto-degrades to a structured markdown digest when piped and can emit a
-stable NDJSON event stream on request.
+Prenup is designed to be used both by humans and by agentic tooling. Output is
+TUI-first when run interactively, but auto-degrades to a structured markdown
+digest when piped and can emit a stable NDJSON event stream on request.
 
 ## 2. Goals & Non-Goals
 
@@ -51,7 +55,7 @@ stable NDJSON event stream on request.
   `.prenup.yaml` and the configured `module_markers`.
 - Does not author commits or modify staged content beyond optionally
   `git add`-ing declared output files.
-- Does not support Windows in v2.
+- Does not support Windows.
 
 ## 3. Target Users & Use Cases
 
@@ -161,8 +165,8 @@ pointer to the offending field rather than silently never matching.
 `prenup config validate` exposes the same check as a standalone command.
 
 ### 5.1 Top-level keys
-- `version: 2` — required *integer* (not the string `"2"`); guards
-  against accidentally loading a v1 config.
+- `version: 1` — required *integer* (not the string `"1"`). The config schema
+  version; see [Config schema versioning](#511-config-schema-versioning).
 - `module_markers` — filenames that define a module. Default `[go.mod]`.
 - `exclude` — doublestar globs filtering change detection.
 - `clean_worktree` — stash unstaged changes around task runs. Default `true`.
@@ -170,6 +174,28 @@ pointer to the offending field rather than silently never matching.
   `0`, meaning `NumCPU`.
 - `output` — default output mode: `auto`, `human`, `markdown`, `json`.
 - `tasks` — the ordered task list.
+
+#### 5.1.1 Config schema versioning
+
+The `version` field is the config *schema* version: a plain integer,
+deliberately **decoupled from the prenup release version**. It changes only
+on a backward-incompatible change to the file format. Additive, non-breaking
+changes (e.g. a new optional field) do **not** bump it and require no
+migration — old configs keep working because new fields default sensibly.
+
+Version handling on load:
+
+- Matching version → parsed normally.
+- Newer than the binary understands → rejected with a message directing the
+  user to upgrade prenup.
+- Missing or otherwise unsupported → rejected with an "unsupported version"
+  error.
+
+When a future breaking change introduces version 2, prenup will adapt older
+configs in memory (so they keep running) and offer an **opt-in** command to
+rewrite the file — it will never rewrite a user's config without consent.
+That machinery is intentionally deferred until there is a second version to
+convert from.
 
 ### 5.2 Per-task fields
 - `name` *(required)* — display name.
@@ -280,7 +306,7 @@ The same run produces identical events; the rendering differs:
   structured markdown digest:
   - `[prenup] …` self-describing preamble identifying the tool, linking
     to docs, and pointing at the structured (`--output json`) mode
-  - `## Prenup v2.x.y` header
+  - `## Prenup vX.Y.Z` header
   - summary counts
   - `### Task: ...` sections with status, duration, modules, and tail of
     output on failure
@@ -305,7 +331,7 @@ prenup is and would only see them as noise.
 - The current directory is inside a git repository.
 - `.prenup.yaml` lives at the repository root.
 - Commands run via `bash -c`; shell features are available.
-- Linux and macOS only in v2.
+- Linux and macOS only.
 
 ## 9. Success Criteria
 

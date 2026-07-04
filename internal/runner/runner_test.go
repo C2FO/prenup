@@ -105,7 +105,7 @@ func (l *atomicCallLog) len() int {
 
 func (s *RunnerTestSuite) TestSequentialSuccess() {
 	cfg := config.Config{
-		Version:       2,
+		Version:       1,
 		ModuleMarkers: []string{"go.mod"},
 		Tasks: []config.Task{
 			{Name: "A", Command: "cmd-a", DefaultSelected: true, PerModule: true},
@@ -147,7 +147,7 @@ func (s *RunnerTestSuite) TestSequentialSuccess() {
 //     to emit.
 func (s *RunnerTestSuite) TestFailFastWithinTaskAcrossModules() {
 	cfg := config.Config{
-		Version:       2,
+		Version:       1,
 		ModuleMarkers: []string{"go.mod"},
 		Tasks: []config.Task{
 			{Name: "Lint", Command: "lint", DefaultSelected: true, PerModule: true},
@@ -185,7 +185,7 @@ func (s *RunnerTestSuite) TestFailFastWithinTaskAcrossModules() {
 
 func (s *RunnerTestSuite) TestBuildPlanAppliesPathFilter() {
 	cfg := config.Config{
-		Version:       2,
+		Version:       1,
 		ModuleMarkers: []string{"go.mod"},
 		Tasks: []config.Task{
 			{
@@ -206,7 +206,7 @@ func (s *RunnerTestSuite) TestBuildPlanAppliesPathFilter() {
 
 func (s *RunnerTestSuite) TestBuildPlanSelectionMap() {
 	cfg := config.Config{
-		Version:       2,
+		Version:       1,
 		ModuleMarkers: []string{"go.mod"},
 		Tasks: []config.Task{
 			{Name: "A", Command: "a", DefaultSelected: true, PerModule: true},

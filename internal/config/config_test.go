@@ -11,7 +11,7 @@ import (
 
 func TestParseValid(t *testing.T) {
 	data := []byte(`
-version: 2
+version: 1
 module_markers:
   - go.mod
 exclude:
@@ -33,7 +33,7 @@ tasks:
 	cfg, err := Parse(data, "/tmp/test.yaml")
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, cfg.Version)
+	assert.Equal(t, 1, cfg.Version)
 	assert.Equal(t, []string{"go.mod"}, cfg.ModuleMarkers)
 	assert.Equal(t, 4, cfg.MaxParallelism)
 	assert.Equal(t, OutputJSON, cfg.Output)
@@ -56,12 +56,36 @@ tasks:
 `)
 	_, err := Parse(data, "/tmp/test.yaml")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `missing "version: 2"`)
+	assert.Contains(t, err.Error(), `missing "version: 1"`)
+}
+
+func TestParseNewerVersionRejected(t *testing.T) {
+	data := []byte(`
+version: 2
+tasks:
+  - name: foo
+    command: "true"
+`)
+	_, err := Parse(data, "/tmp/test.yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a newer version of prenup")
+}
+
+func TestParseUnsupportedOlderVersionRejected(t *testing.T) {
+	data := []byte(`
+version: -1
+tasks:
+  - name: foo
+    command: "true"
+`)
+	_, err := Parse(data, "/tmp/test.yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported config version")
 }
 
 func TestValidateRejectsDuplicateTaskName(t *testing.T) {
 	data := []byte(`
-version: 2
+version: 1
 tasks:
   - name: foo
     command: "true"
@@ -75,7 +99,7 @@ tasks:
 
 func TestValidateRequiresOutputPatternsForStageOutput(t *testing.T) {
 	data := []byte(`
-version: 2
+version: 1
 tasks:
   - name: foo
     command: "true"
@@ -88,7 +112,7 @@ tasks:
 
 func TestValidateRejectsUnknownOutputMode(t *testing.T) {
 	data := []byte(`
-version: 2
+version: 1
 output: flashy
 tasks:
   - name: foo
@@ -101,8 +125,8 @@ tasks:
 
 func TestFindPrefersYamlOverYml(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yaml"), []byte("version: 2\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yml"), []byte("version: 2\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yaml"), []byte("version: 1\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yml"), []byte("version: 1\n"), 0o600))
 
 	p, err := Find(dir)
 	require.NoError(t, err)
@@ -113,7 +137,7 @@ func TestLoadRejectsPathOutsideRepo(t *testing.T) {
 	repo := t.TempDir()
 	other := t.TempDir()
 	cfgPath := filepath.Join(other, ".prenup.yaml")
-	require.NoError(t, os.WriteFile(cfgPath, []byte("version: 2\ntasks: [{name: f, command: \"true\"}]\n"), 0o600))
+	require.NoError(t, os.WriteFile(cfgPath, []byte("version: 1\ntasks: [{name: f, command: \"true\"}]\n"), 0o600))
 
 	_, err := Load(cfgPath, repo)
 	require.Error(t, err)
@@ -129,7 +153,7 @@ func TestLoadRejectsSymlinkEscapingRepo(t *testing.T) {
 	other := t.TempDir()
 
 	target := filepath.Join(other, ".prenup.yaml")
-	require.NoError(t, os.WriteFile(target, []byte("version: 2\ntasks: [{name: f, command: \"true\"}]\n"), 0o600))
+	require.NoError(t, os.WriteFile(target, []byte("version: 1\ntasks: [{name: f, command: \"true\"}]\n"), 0o600))
 
 	link := filepath.Join(repo, ".prenup.yaml")
 	if err := os.Symlink(target, link); err != nil {

@@ -95,7 +95,7 @@ func TestE2ERunWithNoChanges(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
 
-	cfg := `version: 2
+	cfg := `version: 1
 tasks:
   - name: "Echo"
     command: "echo hello"
@@ -119,7 +119,7 @@ func TestE2ERunPassingTaskMarkdownOutput(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\n\ngo 1.22\n"), 0o600))
 
-	cfg := `version: 2
+	cfg := `version: 1
 clean_worktree: false
 tasks:
   - name: "Echo"
@@ -142,7 +142,7 @@ func TestE2ERunFailingTaskBlocksCommit(t *testing.T) {
 	initRepo(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\n\ngo 1.22\n"), 0o600))
 
-	cfg := `version: 2
+	cfg := `version: 1
 clean_worktree: false
 tasks:
   - name: "Fail"
@@ -163,7 +163,7 @@ func TestE2ERunJSONOutput(t *testing.T) {
 	initRepo(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\n\ngo 1.22\n"), 0o600))
 
-	cfg := `version: 2
+	cfg := `version: 1
 clean_worktree: false
 tasks:
   - name: "Echo"
@@ -207,7 +207,7 @@ func TestE2EPlanJSON(t *testing.T) {
 	initRepo(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\n\ngo 1.22\n"), 0o600))
 
-	cfg := `version: 2
+	cfg := `version: 1
 tasks:
   - name: "Echo"
     command: "echo hi"
@@ -243,36 +243,12 @@ func TestE2EInstallUninstallRoundTrip(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func TestE2EMigrateV1(t *testing.T) {
-	bin := buildBinary(t)
-	dir := t.TempDir()
-	initRepo(t, dir)
-
-	v1 := `exclude:
-  - .github
-tasks:
-  - name: "Tests"
-    default_selected: true
-    command: "go test ./..."
-    per_module: true
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yml"), []byte(v1), 0o600))
-
-	_, exit := runPrenup(t, bin, dir, "migrate")
-	require.Equal(t, 0, exit)
-
-	data, err := os.ReadFile(filepath.Join(dir, ".prenup.yaml")) //nolint:gosec // G304: path under test TempDir.
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "version: 2")
-	assert.Contains(t, string(data), "Tests")
-}
-
 func TestE2EConfigValidate(t *testing.T) {
 	bin := buildBinary(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
-	cfg := `version: 2
+	cfg := `version: 1
 tasks:
   - name: "Echo"
     command: "echo"

@@ -1,7 +1,7 @@
 // Package main is the entry point for the prenup binary.
 //
 // Prenup is an interactive, configuration-driven Git pre-commit hook utility.
-// See README.md and docs/PRD.md for the product description and docs/ for
+// See README.md and docs/DESIGN.md for the product description and docs/ for
 // reference material (config schema, event schema, future work).
 package main
 

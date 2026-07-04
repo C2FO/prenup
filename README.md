@@ -1,5 +1,10 @@
 ![prenup.png](prenup.png)
 
+[![GitHub tag](https://img.shields.io/github/tag/c2fo/prenup.svg?style=flat)](https://github.com/c2fo/prenup/releases)
+[![GoDoc](https://pkg.go.dev/badge/github.com/c2fo/prenup?utm_source=godoc)](https://pkg.go.dev/github.com/c2fo/prenup)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![Last Commit](https://img.shields.io/github/last-commit/c2fo/prenup)](https://github.com/c2fo/prenup/commits/main)
+
 # Prenup — Interactive Pre-Commit Hook Utility
 
 Prenup runs user-defined tasks (tests, linters, doc generators, custom scripts)
@@ -7,10 +12,10 @@ as a Git pre-commit hook. It is designed to be fast, selective, and visible:
 only the modules that actually changed get checked, task output streams live,
 and the developer stays in the loop through a simple interactive UI.
 
-Prenup provides dedicated subcommands (`install`, `init`, `run`, `plan`,
-`migrate`), per-task path filtering, per-module parallelism, stash-and-restore
-for safer checks, and agent-friendly output modes (markdown digest when piped,
-NDJSON with `--output json`).
+Prenup provides dedicated subcommands (`install`, `init`, `run`, `plan`),
+per-task path filtering, per-module parallelism, stash-and-restore for safer
+checks, and agent-friendly output modes (markdown digest when piped, NDJSON
+with `--output json`).
 
 ## Quick start
 
@@ -35,8 +40,7 @@ You commit. Prenup runs. Pass or fail, you see why.
 | `prenup install` | Install `.git/hooks/pre-commit`. Prompts on conflicts. |
 | `prenup uninstall` | Remove the managed hook, restoring backups when present. |
 | `prenup init` | Scaffold a starter `.prenup.yaml` from repo inspection. |
-| `prenup migrate` | Convert a v1 `.prenup.yml` into a v2 `.prenup.yaml`. |
-| `prenup config validate [path]` | Validate a config against the v2 schema. |
+| `prenup config validate [path]` | Validate a config against the schema. |
 | `prenup config schema` | Print the embedded JSON schema. |
 | `prenup version` | Print the binary version. |
 
@@ -97,7 +101,7 @@ the `agent_hint` bootstrap line).
 Configuration lives at the repository root as `.prenup.yaml` (or `.prenup.yml`).
 
 ```yaml
-version: 2
+version: 1
 module_markers:
   - go.mod
 exclude:
@@ -191,25 +195,23 @@ Failures are silent and never block a commit.
 For private repositories or to avoid unauthenticated rate limits, set one
 of `PRENUP_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN`.
 
-## Migrating from v1
+## Config schema versioning
 
-Run `prenup migrate` in the root of a repo with a v1 `.prenup.yml`:
+`.prenup.yaml` declares a `version:` — currently `1`. This is the config
+*schema* version, a plain integer independent of the prenup release version.
+It only changes if the file format ever changes in a backward-incompatible
+way; additive, non-breaking features do not bump it, so existing configs keep
+working across prenup upgrades.
 
-```bash
-prenup migrate                       # writes .prenup.yaml beside .prenup.yml
-prenup migrate --in path --out path  # explicit locations
-```
-
-Field names are preserved. New v2 features (`paths`, `paths_ignore`,
-`module_markers`, `parallel`, `env`, `clean_worktree`) are not invented for
-you; add them manually where useful. `prenup config validate` confirms the
-migrated file parses cleanly.
+If prenup encounters a config with a `version:` newer than the running binary
+understands, it fails with a clear message telling you to upgrade prenup.
 
 ## Documentation
 
-- [docs/PRD.md](docs/PRD.md) — product requirements and behavior spec.
+- [docs/DESIGN.md](docs/DESIGN.md) — design and behavior specification.
 - [docs/SCHEMA.md](docs/SCHEMA.md) — config schema and JSON event stream.
 - [docs/FUTURE.md](docs/FUTURE.md) — deferred improvements.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute.
 - [CHANGELOG.md](CHANGELOG.md) — release history.
 
 ## Platform support
@@ -219,7 +221,8 @@ see [docs/FUTURE.md](docs/FUTURE.md).
 
 ## Contributing
 
-Issues and pull requests are welcome. See the [Contributor Covenant Code of
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for development setup and conventions, and the [Contributor Covenant Code of
 Conduct](CODE_OF_CONDUCT.md). All PRs must update the `[Unreleased]` section
 of [CHANGELOG.md](CHANGELOG.md); version numbers are assigned automatically at
 release time.

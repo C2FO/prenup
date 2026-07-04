@@ -1,20 +1,19 @@
 # Prenup — future work
 
-This file tracks deliberate non-goals of v2 that remain good ideas for
-follow-up releases. Nothing here is committed; think of it as a backlog with
-rationale.
+This file tracks deliberate non-goals that remain good ideas for follow-up
+releases. Nothing here is committed; think of it as a backlog with rationale.
 
 ## Correctness & reliability
 
 ### Continue-on-error within a task
-Today (v2), the first failing module in a `per_module` task cancels its
+Today, the first failing module in a `per_module` task cancels its
 remaining modules. Offer an opt-in `fail_fast: false` per task so developers
 see every failing module in one pass with an aggregated summary.
 
 **Acceptance:** per-task config flag; runner collects all module errors;
 final `task_completed` event carries the aggregate.
 
-### Concurrency safety — shipped in v2
+### Concurrency safety — shipped
 `prenup run` takes an OS-level advisory lock on `.git/prenup.lock` before
 executing any tasks. A second concurrent invocation exits non-zero with a
 clear "another prenup run is already in progress for this repository"
@@ -69,7 +68,8 @@ in the post-run summary and a `prenup stats` subcommand for trend analysis.
 
 ### Task-level DAG parallelism
 Add `depends_on` to enable independent tasks to run concurrently while
-serializing generators before linters. v2 is per-module-within-task only.
+serializing generators before linters. Today's runner is
+per-module-within-task only.
 
 ### Pluggable module detectors
 Beyond `module_markers`, introduce named detector plugins (Go, Node,
@@ -102,7 +102,7 @@ skip rates. Local-only unless explicitly opted in.
 ### TUI snapshot tests
 The Bubble Tea models have intricate state (selection cancel vs skip, runner
 fail-fast, window resize). Add scripted input + golden-frame tests to prevent
-regressions like the cancel-allowed-commit bug historically seen in v1.
+regressions such as a cancel action inadvertently allowing the commit.
 
 ### Hook chaining edge cases
 Today `install --chain` runs `pre-commit.local` before prenup. Handle the
@@ -159,7 +159,7 @@ Proposed shape (when we do this):
 
 ## Explicitly **not** planned
 
-- **Windows support.** Out of scope for v2. Many prenup primitives assume
+- **Windows support.** Out of scope. Many prenup primitives assume
   bash, POSIX paths, and the platform's signal semantics; a Windows port
   would require a non-trivial rewrite of exec and IO and is not on the
   roadmap.
