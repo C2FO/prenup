@@ -1,0 +1,13 @@
+# ReleaseGen configuration for prenup.
+#
+# Per-repo, rarely-changing options live here so the validate workflow and the
+# release workflow read them from a single source. Per-invocation values
+# (GITHUB_TOKEN, MANUAL_VERSION, etc.) stay in the workflow env / CLI flags.
+
+custom_change_types:
+  Documentation: patch
+
+validate:
+  # Require every PR that touches non-CHANGELOG files to also add at least
+  # one entry under [Unreleased].
+  require_changelog_entry: true

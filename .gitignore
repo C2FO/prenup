@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts.
+/prenup
+/cmd/prenup/prenup
+
+# Test coverage output.
+coverage.out

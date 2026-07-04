@@ -1,0 +1,39 @@
+# .prenup.yaml — pre-commit checks managed by prenup.
+# What is this? Prenup runs configurable checks before each commit, scoped to
+# the parts of the repo that changed. Learn more and install:
+#   https://github.com/c2fo/prenup
+version: 1
+module_markers:
+  - go.mod
+exclude:
+  - .github/**
+  - '**/*.yaml'
+  - '**/*.yml'
+output: auto
+tasks:
+  - name: Run tests
+    default_selected: true
+    command: go test ./...
+    per_module: true
+    paths:
+      - '**/*.go'
+  - name: Run golangci-lint
+    default_selected: true
+    command: golangci-lint run --max-same-issues 0 ./...
+    per_module: true
+    paths:
+      - '**/*.go'
+  - name: Check for changes in CHANGELOG.md
+    default_selected: true
+    # Runs the same image and subcommand the validate workflow uses in CI,
+    # reading custom_change_types from .releasegen.yaml. Replaces the
+    # legacy changelog.sh "did the changelog change?" guard.
+    #
+    # --pull=always forces Docker to check GHCR for the current digest of
+    # the `v1` moving tag before each run, so we stay automatically in
+    # sync with the latest v1.x release that CI uses. Without this flag
+    # Docker uses its default --pull=missing behavior and will keep
+    # running whatever was first cached locally, even after newer v1.x
+    # images ship. Cost is one HTTP HEAD per invocation; layers stay
+    # cached so re-downloads only happen on a real version bump.
+    command: docker run --rm --pull=always -v "{{.repo_root}}:/workspace" ghcr.io/c2fo/releasegen:v1 validate --repo-root /workspace

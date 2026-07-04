@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/c2fo/prenup/main/assets/prenup.schema.json",
+  "title": "Prenup configuration",
+  "$comment": "This file is the canonical source. assets/prenup.schema.json must stay byte-identical. When adding a version 2, replace `version.const: 1` with a `oneOf` over per-version schemas.",
+  "type": "object",
+  "required": ["version", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Config schema version. Must be 1."
+    },
+    "module_markers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File names whose presence marks a module directory. Defaults to ['go.mod']."
+    },
+    "exclude": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Doublestar glob patterns of files to ignore for change detection."
+    },
+    "clean_worktree": {
+      "type": "boolean",
+      "description": "Stash unstaged changes around task execution so checks see exactly the pending commit. Default true."
+    },
+    "max_parallelism": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Max concurrent per-module task runs. 0 means NumCPU."
+    },
+    "output": {
+      "type": "string",
+      "enum": ["auto", "human", "markdown", "json"],
+      "description": "Default output mode. Overridable via --output."
+    },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "required": ["name", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "default_selected": { "type": "boolean" },
+        "command": { "type": "string", "minLength": 1 },
+        "per_module": { "type": "boolean" },
+        "working_dir": { "type": "string" },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "paths_ignore": { "type": "array", "items": { "type": "string" } },
+        "output_patterns": { "type": "array", "items": { "type": "string" } },
+        "stage_output": { "type": "boolean" },
+        "parallel": { "type": "boolean" },
+        "clean_worktree": { "type": "boolean" },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

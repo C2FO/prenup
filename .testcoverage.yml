@@ -1,0 +1,28 @@
+# Configuration for vladopajic/go-test-coverage.
+# See https://github.com/vladopajic/go-test-coverage for full schema.
+
+# Path to coverage profile file produced by `go test -coverprofile`.
+profile: coverage.out
+
+# Coverage thresholds (percentages, 0-100). Starting conservative for v0.1.0;
+# raise as coverage improves, never lower.
+threshold:
+  total: 55
+  package: 50
+  file: 40
+
+# Exclude generated and non-testable code from coverage statistics.
+exclude:
+  paths:
+    - mocks/
+    # Interactive Bubble Tea TUI; exercised end-to-end via cmd/prenup/e2e_test.go.
+    - internal/ui/human/
+    # Trivial output-mode selection shim.
+    - internal/ui/output.go
+    # Main entrypoint (single delegation call).
+    - cmd/prenup/main.go
+
+breakdown-file-name: ''
+
+diff:
+  base-breakdown-file-name: ''

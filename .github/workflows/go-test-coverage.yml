@@ -1,0 +1,31 @@
+name: Go Test Coverage
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  check-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.26'
+          check-latest: true
+
+      - name: Generate test coverage
+        run: |
+          go test \
+            -race \
+            -covermode=atomic \
+            -coverpkg=./internal/...,./cmd/... \
+            -coverprofile=coverage.out \
+            ./...
+
+      - name: Check test coverage
+        uses: vladopajic/go-test-coverage@679e6807f68f2440a4c43d386442a1d0041838a9 # v2.18.3
+        with:
+          config: ./.testcoverage.yml
