@@ -275,8 +275,34 @@ func TestCheck_RateLimited(t *testing.T) {
 	result := checkAgainstReleasesAPI(context.Background(), "v1.0.0", "", server.URL)
 
 	require.Error(t, result.Error)
-	assert.Contains(t, result.Error.Error(), "rate limit exceeded")
-	assert.Contains(t, result.Error.Error(), "1700000000")
+	msg := result.Error.Error()
+	assert.Contains(t, msg, "rate limit exceeded")
+	// The raw Unix timestamp 1700000000 is 2023-11-14T22:13:20Z; the
+	// formatter renders it as an RFC3339 UTC time so operators aren't left
+	// squinting at a Unix epoch. Assert against the human-readable form.
+	assert.Contains(t, msg, "2023-11-14T22:13:20Z")
+	assert.Contains(t, msg, "resets in")
+}
+
+// TestFormatRateLimitReset covers the parse-fallback branch: a header the
+// GitHub API doesn't set (or that we somehow received malformed) must not
+// mask the underlying rate-limit condition with a strconv error.
+func TestFormatRateLimitReset(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "valid unix seconds", in: "1700000000", want: "2023-11-14T22:13:20Z"},
+		{name: "empty header", in: "", want: "reset time unavailable"},
+		{name: "non-numeric header", in: "later", want: "reset time unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatRateLimitReset(tc.in)
+			assert.Contains(t, got, tc.want)
+		})
+	}
 }
 
 func TestCheck_InvalidCurrentVersion(t *testing.T) {

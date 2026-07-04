@@ -62,7 +62,7 @@ pretty-printed JSON document. See "Plan output" below.
 | Field | Type | Notes |
 |---|---|---|
 | `type` | string | Event kind (see below). |
-| `time` | RFC3339 timestamp | Always present. |
+| `time` | RFC3339 timestamp | Present on every runner event. Omitted from the bootstrap `agent_hint` line, which is a static self-describing header rather than a timestamped event. |
 
 ### Event kinds
 

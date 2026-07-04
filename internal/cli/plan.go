@@ -26,7 +26,7 @@ func newPlanCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("config", "", "path to .prenup.yaml")
-	cmd.Flags().String("output", "", "output mode: auto, human, markdown, or json")
+	cmd.Flags().String("output", "", "output mode: text (default) or json")
 	cmd.Flags().Bool("all", false, "ignore change detection")
 	return cmd
 }

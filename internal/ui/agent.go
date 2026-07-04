@@ -7,7 +7,7 @@ package ui
 //
 // When you change one of these constants, please also:
 //   - re-run `go test ./internal/ui/...` (golden assertions key off them)
-//   - update prenup/docs/SCHEMA.md if you change AgentHintSchema or the
+//   - update docs/SCHEMA.md if you change AgentHintSchema or the
 //     shape of the agent_hint event.
 
 // Tool is the project name as it should appear to consumers. Stable.

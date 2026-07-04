@@ -1,5 +1,5 @@
 // Package jsonout is a runner.Sink that writes one JSON object per line.
-// The schema is documented in prenup/docs/SCHEMA.md and is intended to be
+// The schema is documented in docs/SCHEMA.md and is intended to be
 // consumed by agents and scripting clients.
 package jsonout
 
@@ -56,7 +56,7 @@ func New(w io.Writer) *Sink {
 		StreamFormat: "ndjson",
 		EventTypesNote: "Subsequent lines are runner events: run_started, " +
 			"task_started, line, task_completed, run_completed, notice. " +
-			"See prenup/docs/SCHEMA.md.",
+			"See docs/SCHEMA.md.",
 	})
 	return s
 }

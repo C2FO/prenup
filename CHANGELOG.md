@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `prenup plan --output` help text no longer advertises unsupported
+  `auto`/`human`/`markdown` modes; only `text` (default) and `json` are
+  implemented.
+- `docs/SCHEMA.md` no longer claims the `time` field is present on every
+  NDJSON line — the bootstrap `agent_hint` line is a static header and
+  intentionally omits it.
+- Version checker requests the GitHub Releases API with `?per_page=100`
+  so repos accumulating many releases (or non-semver tags) don't cause
+  the latest valid semver release to fall off the first page.
+- Rate-limit exhaustion errors now render the `X-RateLimit-Reset` header
+  as an RFC3339 UTC time plus a "resets in" duration, instead of leaking
+  the raw Unix epoch integer to the operator.
+- Internal comments in `internal/ui/agent.go` and
+  `internal/ui/jsonout/jsonout.go` (including the agent-facing
+  `event_types_note` hint) now point at `docs/SCHEMA.md`, matching the
+  actual in-repo path.
+
 ### Added
 - Initial open-source release.
 - Interactive, configuration-driven Git pre-commit hook runner.

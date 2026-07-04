@@ -70,8 +70,13 @@ tasks:
 	out := captureStdout(s.T(), func() error {
 		return newConfigValidateCmd().RunE(nil, []string{explicit})
 	})
+	// `config validate` prints `OK: <path> parses cleanly (v<n>, <k> tasks)`;
+	// assert against those fields (the task *name* is intentionally not
+	// echoed, so don't grep for it).
 	s.Contains(out, "OK:")
-	s.Contains(out, "Explicit")
+	s.Contains(out, explicit)
+	s.Contains(out, "v1,")
+	s.Contains(out, "1 tasks")
 }
 
 // TestValidate_MissingConfig surfaces a helpful error when there is no

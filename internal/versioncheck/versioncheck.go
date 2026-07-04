@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,11 +15,15 @@ import (
 )
 
 const (
-	repoOwner   = "c2fo"
-	repoName    = "prenup"
-	tagPrefix   = "v"
-	apiTimeout  = 10 * time.Second
-	releasesURL = "https://api.github.com/repos/%s/%s/releases"
+	repoOwner  = "c2fo"
+	repoName   = "prenup"
+	tagPrefix  = "v"
+	apiTimeout = 10 * time.Second
+	// per_page=100 is the GitHub API maximum. We do not paginate: the
+	// newest valid semver-tagged release is virtually always in the most
+	// recent 100 entries, and prenup would rather report "no release
+	// found" than fan out multiple HTTP calls on a pre-commit hook path.
+	releasesURL = "https://api.github.com/repos/%s/%s/releases?per_page=100"
 )
 
 // Release represents a GitHub release.
@@ -105,8 +110,8 @@ func fetchLatestPrenupRelease(ctx context.Context, githubToken, apiURL string) (
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0" {
-		return "", "", fmt.Errorf("GitHub API rate limit exceeded (resets at %s)",
-			resp.Header.Get("X-RateLimit-Reset"))
+		return "", "", fmt.Errorf("GitHub API rate limit exceeded (%s)",
+			formatRateLimitReset(resp.Header.Get("X-RateLimit-Reset")))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
@@ -139,6 +144,23 @@ func fetchLatestPrenupRelease(ctx context.Context, githubToken, apiURL string) (
 	}
 
 	return latestVer, latestURL, nil
+}
+
+// formatRateLimitReset renders the GitHub X-RateLimit-Reset header (a Unix
+// timestamp in seconds) as both a human-readable UTC time and a duration
+// until reset. Falls back to the raw value on parse failure so a
+// misformatted header never masks the underlying rate-limit condition.
+func formatRateLimitReset(raw string) string {
+	secs, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return "reset time unavailable"
+	}
+	reset := time.Unix(secs, 0).UTC()
+	wait := time.Until(reset).Round(time.Second)
+	if wait < 0 {
+		wait = 0
+	}
+	return fmt.Sprintf("resets in %s at %s", wait, reset.Format(time.RFC3339))
 }
 
 func normalizeVersion(v string) string {
