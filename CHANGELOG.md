@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `internal/ui/jsonout/jsonout.go` (including the agent-facing
   `event_types_note` hint) now point at `docs/SCHEMA.md`, matching the
   actual in-repo path.
+- Repo lock now resolves a *relative* `gitdir:` target in a `.git` file
+  (git worktrees/submodules) against the repository root instead of the
+  current working directory, so the lock lands in the real git metadata
+  directory.
+- Human-mode post-run summary bounds its retained output to the most
+  recent lines (keeping a tail and noting how many were dropped) so a
+  noisy task can't grow memory without limit during a hook run.
+- Version-check requests now send a `User-Agent` header, which the GitHub
+  REST API expects (some environments 403 without it).
+- `lock` package now compiles on non-unix platforms via a build-tagged
+  no-op `flock` stub; advisory locking remains unix-only by design, as
+  documented.
+- Corrected the `lock.Acquire` godoc, which incorrectly stated that
+  `Close` removes the lock file (it intentionally does not).
 
 ### Added
 - Initial open-source release.

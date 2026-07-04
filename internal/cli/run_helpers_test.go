@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -203,5 +202,5 @@ func captureStdout(t *testing.T, fn func() error) string {
 	buf, readErr := io.ReadAll(r)
 	require.NoError(t, readErr)
 	require.NoError(t, fnErr)
-	return strings.TrimSuffix(string(buf), "")
+	return string(buf)
 }

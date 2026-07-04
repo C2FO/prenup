@@ -74,6 +74,30 @@ func TestAcquireCreatesGitDirIfMissing(t *testing.T) {
 	require.True(t, info.IsDir())
 }
 
+// TestAcquireResolvesRelativeGitdir covers the worktree/submodule layout
+// where `.git` is a regular file whose `gitdir:` target is *relative* to
+// the directory containing that file. Acquire must anchor the resolved path
+// at repoRoot so the lock lands in the real git metadata dir rather than
+// relative to the current working directory.
+func TestAcquireResolvesRelativeGitdir(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+
+	// Real gitdir lives at <repo>/.real-git; the `.git` file points at it
+	// with a relative path, exactly as `git worktree add` writes it.
+	realGitDir := filepath.Join(repo, ".real-git")
+	require.NoError(t, os.MkdirAll(realGitDir, 0o750))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repo, ".git"), []byte("gitdir: .real-git\n"), 0o600))
+
+	l, err := Acquire(repo)
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }()
+
+	require.Equal(t, filepath.Join(realGitDir, LockFileName), l.Path())
+	require.FileExists(t, l.Path())
+}
+
 func TestAcquireConcurrent(t *testing.T) {
 	t.Parallel()
 	repo := fakeRepo(t)

@@ -99,6 +99,9 @@ func fetchLatestPrenupRelease(ctx context.Context, githubToken, apiURL string) (
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	// GitHub's REST API requires a User-Agent; requests without one can be
+	// rejected with 403 and are harder to trace in server logs.
+	req.Header.Set("User-Agent", repoName)
 	if githubToken != "" {
 		req.Header.Set("Authorization", "Bearer "+githubToken)
 	}

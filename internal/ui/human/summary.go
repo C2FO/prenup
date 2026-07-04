@@ -10,21 +10,29 @@ import (
 	"github.com/c2fo/prenup/internal/runner"
 )
 
+// maxSummaryLogLines caps how many output lines SummarySink retains for the
+// post-run "Prenup output" block. A noisy task (verbose test suite, chatty
+// linter) could otherwise grow s.logs without bound during a single hook
+// run. When the cap is exceeded we keep the most recent lines -- the tail is
+// where failures and stack traces surface -- and note how many were dropped.
+const maxSummaryLogLines = 5000
+
 // SummarySink collects events and prints a human-readable post-run summary to
 // stdout after the alt-screen UI exits. Used in combination with the
 // RunnerSink TUI to preserve visibility in clients that hide the alt-screen.
 type SummarySink struct {
-	mu        sync.Mutex
-	w         io.Writer
-	version   string
-	notice    string
-	logs      []string
-	taskOrder []string
-	seenTask  map[string]bool
-	statuses  map[string]runner.TaskStatus
-	durations map[string]int64
-	notes     map[string]string
-	summary   runner.Event
+	mu           sync.Mutex
+	w            io.Writer
+	version      string
+	notice       string
+	logs         []string
+	droppedLines int
+	taskOrder    []string
+	seenTask     map[string]bool
+	statuses     map[string]runner.TaskStatus
+	durations    map[string]int64
+	notes        map[string]string
+	summary      runner.Event
 }
 
 // NewSummarySink returns a SummarySink writing to w.
@@ -47,7 +55,7 @@ func (s *SummarySink) Emit(ev runner.Event) {
 		s.version = ev.Version
 		s.notice = ev.Message
 	case runner.EventLine:
-		s.logs = append(s.logs, ev.Text)
+		s.appendLog(ev.Text)
 	case runner.EventTaskStarted:
 		if !s.seenTask[ev.Task] {
 			s.seenTask[ev.Task] = true
@@ -66,6 +74,16 @@ func (s *SummarySink) Emit(ev runner.Event) {
 	case runner.EventRunCompleted:
 		s.summary = ev
 	}
+}
+
+// appendLog records an output line, enforcing maxSummaryLogLines by
+// dropping the oldest line once the cap is reached. Caller holds s.mu.
+func (s *SummarySink) appendLog(line string) {
+	if len(s.logs) >= maxSummaryLogLines {
+		s.logs = s.logs[1:]
+		s.droppedLines++
+	}
+	s.logs = append(s.logs, line)
 }
 
 // Close flushes the summary to the writer.
@@ -92,6 +110,9 @@ func (s *SummarySink) render() {
 		s.writef("%s\n", s.notice)
 	}
 	s.writef("\nPrenup output:\n----------------\n")
+	if s.droppedLines > 0 {
+		s.writef("... (%d earlier line(s) omitted to bound memory) ...\n", s.droppedLines)
+	}
 	for _, line := range s.logs {
 		s.writeln(line)
 	}

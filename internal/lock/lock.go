@@ -41,7 +41,8 @@ type Lock struct {
 // the problem.
 //
 // The returned Lock owns the file descriptor; the caller must call Close
-// (typically via defer) to release the lock and remove the file.
+// (typically via defer) to release the lock. Close does not delete the
+// lock file (see Close for the rationale).
 func Acquire(repoRoot string) (*Lock, error) {
 	gitDir := filepath.Join(repoRoot, ".git")
 	// Repos with separate gitdirs (worktrees, submodules) write a `.git`
@@ -51,6 +52,13 @@ func Acquire(repoRoot string) (*Lock, error) {
 	// having pointed us at a real repo root.
 	if info, err := os.Stat(gitDir); err == nil && !info.IsDir() {
 		if resolved, ok := resolveGitFile(gitDir); ok {
+			// A `gitdir:` target may be relative to the directory that
+			// contains the `.git` file (repoRoot). Anchor it there so
+			// MkdirAll/OpenFile don't operate relative to the current
+			// working directory.
+			if !filepath.IsAbs(resolved) {
+				resolved = filepath.Join(repoRoot, resolved)
+			}
 			gitDir = resolved
 		}
 	}
