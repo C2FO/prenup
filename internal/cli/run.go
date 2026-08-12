@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -92,8 +94,8 @@ func runRun(cmd *cobra.Command, _ []string, opts runOptions) error {
 		opts = readRunOptions(cmd)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := newRunContext()
+	defer stop()
 
 	repoRoot, err := git.RepoRoot("")
 	if err != nil {
@@ -165,6 +167,23 @@ func runRun(cmd *cobra.Command, _ []string, opts runOptions) error {
 		return &exitCodeError{code: result.ExitCode}
 	}
 	return nil
+}
+
+// newRunContext wires SIGINT/SIGTERM to ctx cancellation rather than letting
+// the OS terminate the process outright. Without this, an external kill
+// (e.g. a CI/editor timeout, or a git GUI's "cancel" sending SIGTERM to the
+// hook process) skips Go's deferred cleanup entirely, so the clean-worktree
+// stash created by beginStash is never popped (endStash's defer never runs)
+// — leaving an orphaned stash that surprises the user on their next
+// `git stash pop` or rebase. Cancellation gives BashExecutor.Run (which
+// already reacts to ctx via cmd.Cancel) a chance to gracefully stop the
+// in-flight task so Run can return and the deferred endStash still executes.
+//
+// A second SIGINT/SIGTERM reverts to the OS default (immediate termination)
+// per signal.NotifyContext's documented behavior, so an unresponsive task
+// can still be force-killed.
+func newRunContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
 // printlnSafe writes msg to stdout when non-empty. Returns the underlying
