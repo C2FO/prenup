@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cleanup, so the `clean_worktree` stash was never popped, leaving an
   orphaned stash that surfaced as a confusing conflict later. A second
   SIGINT/SIGTERM still forces immediate termination.
+- Once a run is canceled this way, any task that hadn't started yet is now
+  reported as a single, clear "run interrupted" skip instead of a wall of
+  misleading per-task "context canceled" failures.
 
 ## [[v0.1.0](https://github.com/C2FO/prenup/releases/tag/v0.1.0)] - 2026-07-04
 ### Fixed

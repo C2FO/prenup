@@ -182,6 +182,12 @@ func runRun(cmd *cobra.Command, _ []string, opts runOptions) error {
 // A second SIGINT/SIGTERM reverts to the OS default (immediate termination)
 // per signal.NotifyContext's documented behavior, so an unresponsive task
 // can still be force-killed.
+//
+// syscall.SIGTERM is a real, deliverable signal on unix but only a
+// synthetic value on Windows (the OS never actually raises it), so this
+// call is effectively equivalent to signal.NotifyContext(ctx, os.Interrupt)
+// there. That's fine: os.Interrupt is the one signal value the os package
+// guarantees is present on every platform.
 func newRunContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
