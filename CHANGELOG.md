@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- `prenup run` now cancels its context on SIGINT/SIGTERM instead of letting
+  the OS terminate the process outright. Previously, an external kill (a
+  CI/editor timeout, a git GUI's "cancel" button, etc.) skipped all deferred
+  cleanup, so the `clean_worktree` stash was never popped, leaving an
+  orphaned stash that surfaced as a confusing conflict later. A second
+  SIGINT/SIGTERM still forces immediate termination.
+- Once a run is canceled this way, any task that hadn't started yet is now
+  reported as a single, clear "run interrupted" skip instead of a wall of
+  misleading per-task "context canceled" failures.
 
 ## [[v0.1.0](https://github.com/C2FO/prenup/releases/tag/v0.1.0)] - 2026-07-04
 ### Fixed

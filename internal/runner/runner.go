@@ -128,6 +128,11 @@ type Result struct {
 	// FailedTasks is the names of tasks that ended in TaskStatusFailed,
 	// in selection order. Empty when Failed == 0.
 	FailedTasks []string
+	// Interrupted is true when ctx was canceled (e.g. by an external
+	// SIGINT/SIGTERM) before every selected task had a chance to start.
+	// Callers can use this to distinguish "the run was cut short" from
+	// "every attempted task genuinely failed".
+	Interrupted bool
 }
 
 // Run executes the plan's selected tasks and emits events to opts.Sink.
@@ -167,10 +172,31 @@ func Run(ctx context.Context, plan Plan, opts Options) (Result, error) {
 			})
 			continue
 		}
+		// Once ctx is canceled (e.g. an external SIGINT/SIGTERM), stop
+		// starting new tasks: exec.CommandContext would just fail each one
+		// immediately with "context canceled", which previously surfaced as
+		// a wall of misleading per-task failures instead of one clear
+		// "run was interrupted" outcome. A task already in flight when
+		// cancellation happens is unaffected by this check — it observes
+		// ctx via its own exec.CommandContext call and runs to whatever
+		// outcome that produces (typically a cancellation-driven failure,
+		// but a task that finishes just as the signal arrives can still
+		// succeed); only tasks that haven't started yet are skipped here.
+		if ctx.Err() != nil {
+			result.Interrupted = true
+			sink.Emit(Event{
+				Kind:    EventTaskCompleted,
+				Time:    time.Now(),
+				Task:    pt.Task.Name,
+				Status:  TaskStatusSkipped,
+				Message: "run interrupted: " + ctx.Err().Error(),
+			})
+			continue
+		}
 		runOneTask(ctx, pt, plan.RepoRoot, opts, exec, sink, maxPar, &result)
 	}
 
-	if result.Failed > 0 {
+	if result.Failed > 0 || result.Interrupted {
 		result.ExitCode = 1
 	}
 	sink.Emit(Event{

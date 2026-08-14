@@ -3,13 +3,18 @@ package runner_test
 import (
 	"context"
 	"errors"
+	"os"
+	osexec "os/exec"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/c2fo/prenup/internal/config"
+	"github.com/c2fo/prenup/internal/git"
 	"github.com/c2fo/prenup/internal/runner"
 	"github.com/c2fo/prenup/internal/runner/mocks"
 )
@@ -181,6 +186,108 @@ func (s *RunnerTestSuite) TestFailFastWithinTaskAcrossModules() {
 		}
 	}
 	s.True(foundFailureLine, "expected a synthetic failure-attribution line on EventLine/stderr")
+}
+
+// TestContextCancellationSkipsRemainingTasksAndPopsStash pins the fix for
+// C2FO/prenup#2: once ctx is canceled (e.g. by an external SIGINT/SIGTERM),
+// Run must not attempt any task that hasn't started yet (previously it did,
+// and each one failed near-instantly with a misleading "context canceled"
+// error), and the clean_worktree stash created by beginStash must still be
+// popped once Run returns despite the run ending early.
+func (s *RunnerTestSuite) TestContextCancellationSkipsRemainingTasksAndPopsStash() {
+	repo := s.T().TempDir()
+	runGit := func(args ...string) {
+		cmd := osexec.Command("git", args...) //nolint:gosec // G204: fixed binary, test-controlled args.
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		s.Require().NoErrorf(err, "git %v: %s", args, out)
+	}
+	runGit("init", "-b", "main")
+	runGit("config", "user.email", "test@example.com")
+	runGit("config", "user.name", "test")
+	runGit("config", "commit.gpgsign", "false")
+
+	trackedFile := filepath.Join(repo, "tracked.txt")
+	s.Require().NoError(os.WriteFile(trackedFile, []byte("committed\n"), 0o600))
+	runGit("add", "tracked.txt")
+	runGit("commit", "-m", "seed")
+
+	// Dirty the worktree so beginStash actually creates a stash (a clean
+	// worktree is a no-op Stash, which wouldn't exercise the pop path).
+	const unstagedContent = "unstaged-in-progress\n"
+	s.Require().NoError(os.WriteFile(trackedFile, []byte(unstagedContent), 0o600))
+
+	cfg := config.Config{
+		Version: 1,
+		Tasks: []config.Task{
+			{Name: "A", Command: "cmd-a", DefaultSelected: true},
+			{Name: "B", Command: "cmd-b", DefaultSelected: true},
+		},
+	}
+	plan := runner.BuildPlan(cfg, repo, []string{"tracked.txt"}, []string{"."}, nil)
+	s.Require().Len(plan.Tasks, 2)
+	s.Require().True(plan.Tasks[0].Selected)
+	s.Require().True(plan.Tasks[1].Selected)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var calls int32
+	fakeExec := mocks.NewExecutor(s.T())
+	fakeExec.EXPECT().
+		Run(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _, _ string, _ map[string]string, _ func(runner.Stream, string)) error {
+			atomic.AddInt32(&calls, 1)
+			// Simulate a signal arriving while task A is executing: cancel
+			// the shared context (as newRunContext's signal handler would)
+			// right as the task finishes, mirroring the window between a
+			// task completing and prenup noticing the cancellation.
+			cancel()
+			return nil
+		}).
+		Once()
+
+	sink := s.newRecordingSink()
+	opts := runner.Options{
+		Executor:      fakeExec,
+		Git:           git.New(repo),
+		Sink:          sink.mock,
+		CleanWorktree: true,
+	}
+
+	result, err := runner.Run(ctx, plan, opts)
+	s.Require().NoError(err)
+
+	s.Equal(int32(1), atomic.LoadInt32(&calls), "task B's executor must never run once ctx is canceled")
+	s.True(result.Interrupted, "result must flag that the run was cut short")
+	s.Equal(1, result.Succeeded, "task A itself completed before the cancellation was noticed")
+	s.Equal(0, result.Failed, "task B must be reported as skipped, not a fabricated failure")
+	s.Equal(1, result.ExitCode, "an interrupted run must still exit non-zero even with zero real failures")
+
+	var sawSkippedB bool
+	events := sink.snapshot()
+	for i := range events {
+		ev := &events[i]
+		if ev.Kind == runner.EventTaskCompleted && ev.Task == "B" {
+			s.Equal(runner.TaskStatusSkipped, ev.Status)
+			s.Contains(ev.Message, "run interrupted")
+			sawSkippedB = true
+		}
+	}
+	s.True(sawSkippedB, "expected a task_completed/skipped event for the un-started task B")
+
+	// The core regression: beginStash's stash must still be popped even
+	// though the run ended early, and the pre-run unstaged edit must be
+	// restored intact.
+	listCmd := osexec.Command("git", "stash", "list")
+	listCmd.Dir = repo
+	out, err := listCmd.Output()
+	s.Require().NoError(err)
+	s.Empty(string(out), "prenup's autostash must be popped, not left orphaned")
+
+	restored, err := os.ReadFile(trackedFile) //nolint:gosec // G304: test-controlled path inside t.TempDir().
+	s.Require().NoError(err)
+	s.Equal(unstagedContent, string(restored), "the unstaged edit must be restored after the stash pop")
 }
 
 func (s *RunnerTestSuite) TestBuildPlanAppliesPathFilter() {

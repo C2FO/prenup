@@ -5,7 +5,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -186,4 +188,44 @@ func TestLoadRunConfigExplicitPath(t *testing.T) {
 	must.NoError(err)
 	is.Equal(1, cfg.Version)
 	is.Len(cfg.Tasks, 1)
+}
+
+// TestNewRunContext_CanceledOnSIGTERM pins the fix for orphaned stashes: an
+// external SIGTERM (e.g. a CI/editor timeout killing the hook process)
+// must cancel the run context rather than letting the OS terminate the
+// process before the deferred stash-pop cleanup in runRun/runner.Run runs.
+// Not run with t.Parallel(): both tests deliver real OS signals to this
+// process, and interleaving them with other signal-registering tests could
+// make failures nondeterministic.
+func TestNewRunContext_CanceledOnSIGTERM(t *testing.T) {
+	must := require.New(t)
+
+	ctx, stop := newRunContext()
+	defer stop()
+
+	must.NoError(syscall.Kill(os.Getpid(), syscall.SIGTERM))
+
+	select {
+	case <-ctx.Done():
+		// expected: signal delivery canceled the context.
+	case <-time.After(5 * time.Second):
+		t.Fatal("context was not canceled after SIGTERM")
+	}
+}
+
+// TestNewRunContext_CanceledOnSIGINT mirrors the SIGTERM case for Ctrl-C.
+func TestNewRunContext_CanceledOnSIGINT(t *testing.T) {
+	must := require.New(t)
+
+	ctx, stop := newRunContext()
+	defer stop()
+
+	must.NoError(syscall.Kill(os.Getpid(), syscall.SIGINT))
+
+	select {
+	case <-ctx.Done():
+		// expected: signal delivery canceled the context.
+	case <-time.After(5 * time.Second):
+		t.Fatal("context was not canceled after SIGINT")
+	}
 }
