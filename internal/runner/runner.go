@@ -176,10 +176,12 @@ func Run(ctx context.Context, plan Plan, opts Options) (Result, error) {
 		// starting new tasks: exec.CommandContext would just fail each one
 		// immediately with "context canceled", which previously surfaced as
 		// a wall of misleading per-task failures instead of one clear
-		// "run was interrupted" outcome. The task that was in flight when
-		// cancellation happened has already run to its own (real) failure
-		// via runOneTask below; only tasks that haven't started yet are
-		// skipped here.
+		// "run was interrupted" outcome. A task already in flight when
+		// cancellation happens is unaffected by this check — it observes
+		// ctx via its own exec.CommandContext call and runs to whatever
+		// outcome that produces (typically a cancellation-driven failure,
+		// but a task that finishes just as the signal arrives can still
+		// succeed); only tasks that haven't started yet are skipped here.
 		if ctx.Err() != nil {
 			result.Interrupted = true
 			sink.Emit(Event{
