@@ -250,6 +250,39 @@ func (s *GitTestSuite) TestHooksDirIsExternal() {
 	}
 }
 
+// TestGitDirs pins the per-checkout vs shared git directory split that
+// containerized tasks need to mount for linked worktrees.
+func (s *GitTestSuite) TestGitDirs() {
+	wt := filepath.Join(s.T().TempDir(), "wt")
+	s.runGit(s.repo, "worktree", "add", "-b", "feat", wt)
+	eval := func(p string) string {
+		r, err := filepath.EvalSymlinks(p)
+		s.Require().NoError(err)
+		return r
+	}
+	common := eval(filepath.Join(s.repo, ".git"))
+
+	gitDir, commonDir, err := GitDirs(s.repo)
+	s.Require().NoError(err)
+	s.Equal(common, eval(gitDir))
+	s.Equal(common, eval(commonDir))
+
+	sub := filepath.Join(s.repo, "sub")
+	s.Require().NoError(os.Mkdir(sub, 0o750))
+	gitDir, commonDir, err = GitDirs(sub)
+	s.Require().NoError(err)
+	s.Equal(common, eval(gitDir))
+	s.Equal(common, eval(commonDir))
+
+	gitDir, commonDir, err = GitDirs(wt)
+	s.Require().NoError(err)
+	s.Equal(filepath.Join(common, "worktrees", "wt"), eval(gitDir))
+	s.Equal(common, eval(commonDir))
+
+	_, _, err = GitDirs(s.T().TempDir())
+	s.Require().Error(err)
+}
+
 func (s *GitTestSuite) TestHooksDirIsExternal_NotARepo() {
 	_, err := HooksDirIsExternal(s.T().TempDir(), "/x")
 	s.Require().Error(err)

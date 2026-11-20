@@ -11,6 +11,29 @@ type TemplateVars struct {
 	ModuleRoot string
 	ModulePath string
 	ModuleName string
+	// GitDir is the absolute per-checkout git directory: <repo>/.git for a
+	// normal checkout, <common>/worktrees/<name> for a linked worktree.
+	GitDir string
+	// GitCommonDir is the absolute git directory shared by all worktrees of
+	// the repository (the main checkout's .git).
+	GitCommonDir string
+}
+
+const (
+	varGitDir       = "{{.git_dir}}"
+	varGitCommonDir = "{{.git_common_dir}}"
+)
+
+// usesGitDirs reports whether any of the strings reference {{.git_dir}} or
+// {{.git_common_dir}}. Resolving them costs a git invocation, so callers only
+// do it when a task actually asks.
+func usesGitDirs(ss ...string) bool {
+	for _, s := range ss {
+		if strings.Contains(s, varGitDir) || strings.Contains(s, varGitCommonDir) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewTemplateVars computes the template variables for module (a path relative
@@ -29,7 +52,8 @@ func NewTemplateVars(repoRoot, module string) TemplateVars {
 }
 
 // Expand replaces the supported template variables in s.
-// Supported: {{.repo_root}}, {{.module_root}}, {{.module_path}}, {{.module_name}}.
+// Supported: {{.repo_root}}, {{.module_root}}, {{.module_path}}, {{.module_name}},
+// {{.git_dir}}, {{.git_common_dir}}.
 // Unknown variables are left untouched.
 func (v TemplateVars) Expand(s string) string {
 	pairs := map[string]string{
@@ -37,6 +61,8 @@ func (v TemplateVars) Expand(s string) string {
 		"{{.module_root}}": v.ModuleRoot,
 		"{{.module_path}}": v.ModulePath,
 		"{{.module_name}}": v.ModuleName,
+		varGitDir:          v.GitDir,
+		varGitCommonDir:    v.GitCommonDir,
 		// Backward-compatible alias that v1 users may have in configs.
 		"{{.module}}": v.ModuleName,
 	}

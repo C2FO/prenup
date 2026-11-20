@@ -36,4 +36,10 @@ tasks:
     # running whatever was first cached locally, even after newer v1.x
     # images ship. Cost is one HTTP HEAD per invocation; layers stay
     # cached so re-downloads only happen on a real version bump.
-    command: docker run --rm --pull=always -v "{{.repo_root}}:/workspace" ghcr.io/c2fo/releasegen:v1 validate --repo-root /workspace
+    #
+    # The extra read-only mount of {{.git_common_dir}} (at the same absolute
+    # path) is what makes this work from a linked worktree: there,
+    # /workspace/.git is a file pointing at <common>/worktrees/<name> on the
+    # host, which must exist inside the container. In a normal checkout it is
+    # simply the repo's own .git directory.
+    command: docker run --rm --pull=always -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}:ro" ghcr.io/c2fo/releasegen:v1 validate --repo-root /workspace

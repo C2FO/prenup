@@ -149,6 +149,19 @@ Available inside `command` and `working_dir`:
 | `{{.module_root}}` | Absolute path to the current module. |
 | `{{.module_path}}` | Module path relative to the repo root. |
 | `{{.module_name}}` | Basename of the module directory. |
+| `{{.git_dir}}` | Absolute path to this checkout's git directory (`<repo>/.git`, or `<common>/worktrees/<name>` in a linked worktree). Resolved only when referenced. |
+| `{{.git_common_dir}}` | Absolute path to the git directory shared by all worktrees (the main checkout's `.git`). Resolved only when referenced. |
+
+For containerized git tasks, mount the common dir at its own path so a linked
+worktree's `.git` file resolves inside the container:
+
+```yaml
+command: docker run --rm -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}:ro" image cmd
+```
+
+This assumes git writes absolute `gitdir:` paths (the default); with
+`worktree.useRelativePaths=true` the relative link will not resolve under
+`/workspace`.
 
 ## Behavior
 

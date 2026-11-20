@@ -351,6 +351,13 @@ func (s *RunnerTestSuite) TestTemplateExpand() {
 			want:   "leaf",
 		},
 		{
+			name:   "git dir vars are left untouched when unresolved",
+			repo:   "/repo",
+			module: "x",
+			input:  "-v {{.git_common_dir}}:{{.git_dir}}",
+			want:   "-v {{.git_common_dir}}:{{.git_dir}}",
+		},
+		{
 			name:   "no template vars passes through",
 			repo:   "/repo",
 			module: "x",
@@ -364,6 +371,89 @@ func (s *RunnerTestSuite) TestTemplateExpand() {
 			s.Equal(tc.want, v.Expand(tc.input))
 		})
 	}
+}
+
+// TestGitDirTemplateVars pins that {{.git_dir}} and {{.git_common_dir}} expand
+// to the real git metadata locations: identical for a normal checkout, and
+// split between the per-worktree dir and the shared dir for a linked worktree.
+func (s *RunnerTestSuite) TestGitDirTemplateVars() {
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX", "GIT_COMMON_DIR"} {
+		s.T().Setenv(k, "")
+		s.Require().NoError(os.Unsetenv(k))
+	}
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	repo := s.T().TempDir()
+	runGit := func(args ...string) {
+		cmd := osexec.Command("git", args...) //nolint:gosec // G204: fixed binary, test-controlled args.
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		s.Require().NoErrorf(err, "git %v: %s", args, out)
+	}
+	runGit("init", "-b", "main")
+	runGit("config", "user.email", "test@example.com")
+	runGit("config", "user.name", "test")
+	runGit("config", "commit.gpgsign", "false")
+	runGit("commit", "--allow-empty", "-m", "seed")
+	wt := filepath.Join(s.T().TempDir(), "wt")
+	runGit("worktree", "add", "-b", "feat", wt)
+
+	eval := func(p string) string {
+		r, err := filepath.EvalSymlinks(p)
+		s.Require().NoError(err)
+		return r
+	}
+	common := eval(filepath.Join(repo, ".git"))
+
+	tests := []struct {
+		name       string
+		root       string
+		wantGitDir string
+		wantCommon string
+	}{
+		{name: "normal checkout", root: repo, wantGitDir: common, wantCommon: common},
+		{name: "linked worktree", root: wt, wantGitDir: filepath.Join(common, "worktrees", "wt"), wantCommon: common},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			cfg := config.Config{
+				Version: 1,
+				Tasks: []config.Task{{
+					Name: "T", DefaultSelected: true,
+					Command: `docker run -v "{{.git_common_dir}}:{{.git_common_dir}}:ro" -e GD={{.git_dir}}`,
+				}},
+			}
+			plan := runner.BuildPlan(cfg, eval(tt.root), nil, nil, nil)
+			exec, calls := s.stubExecutor("ok", nil)
+			sink := s.newRecordingSink()
+			result, err := runner.Run(context.Background(), plan, runner.Options{Executor: exec, Sink: sink.mock, MaxParallelism: 1})
+			s.Require().NoError(err)
+			s.Equal(1, result.Succeeded)
+			s.Require().Equal(1, calls.len())
+			want := `docker run -v "` + tt.wantCommon + `:` + tt.wantCommon + `:ro" -e GD=` + tt.wantGitDir
+			s.Equal(want, calls.calls[0].command)
+		})
+	}
+
+	s.Run("not a repository fails the task", func() {
+		cfg := config.Config{Version: 1, Tasks: []config.Task{{Name: "T", DefaultSelected: true, Command: "x {{.git_dir}}"}}}
+		plan := runner.BuildPlan(cfg, s.T().TempDir(), nil, nil, nil)
+		exec, calls := s.stubExecutor("", nil)
+		sink := s.newRecordingSink()
+		result, err := runner.Run(context.Background(), plan, runner.Options{Executor: exec, Sink: sink.mock, MaxParallelism: 1})
+		s.Require().NoError(err)
+		s.Equal(1, result.Failed)
+		s.Equal(0, calls.len(), "task must not run with unresolved git vars")
+		var msg string
+		events := sink.snapshot()
+		for i := range events {
+			if events[i].Message != "" {
+				msg = events[i].Message
+			}
+		}
+		s.Contains(msg, "resolving git directories")
+	})
 }
 
 func TestRunnerSuite(t *testing.T) {

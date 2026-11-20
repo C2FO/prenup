@@ -77,6 +77,30 @@ func HooksDir(dir string) (string, error) {
 	return filepath.Clean(hooks), nil
 }
 
+// GitDirs returns the absolute per-checkout git directory and the absolute
+// git directory shared by all worktrees of the repository containing dir. For
+// a normal checkout both are <repo>/.git. For a linked worktree, gitDir is
+// <common>/worktrees/<name> and commonDir is the main checkout's .git.
+func GitDirs(dir string) (gitDir, commonDir string, err error) {
+	root, err := RepoRoot(dir)
+	if err != nil {
+		return "", "", err
+	}
+	out, err := (&Runner{Dir: root}).run("rev-parse", "--absolute-git-dir", "--git-common-dir")
+	if err != nil {
+		return "", "", err
+	}
+	lines := splitLines(out)
+	if len(lines) != 2 {
+		return "", "", fmt.Errorf("unexpected git rev-parse output: %q", out)
+	}
+	gitDir, commonDir = lines[0], lines[1]
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(root, commonDir)
+	}
+	return filepath.Clean(gitDir), filepath.Clean(commonDir), nil
+}
+
 // HooksDirIsExternal reports whether hooksDir lies outside both the checkout
 // containing dir and its git directory, which happens when core.hooksPath
 // points at a directory shared by several repositories. Installing or removing
