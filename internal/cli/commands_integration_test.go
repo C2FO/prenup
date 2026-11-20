@@ -20,6 +20,10 @@ type CommandsIntegrationTestSuite struct {
 
 func (s *CommandsIntegrationTestSuite) SetupTest() {
 	clearGitHookEnv(s.T())
+	// Ignore the developer's global/system git config (core.hooksPath,
+	// init.templateDir, ...) so every test stays inside its temp repository.
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	dir := s.T().TempDir()
 	for _, args := range [][]string{
 		{"init", "-b", "main"},
@@ -64,10 +68,6 @@ func (s *CommandsIntegrationTestSuite) TestRunInstall_HappyPath() {
 // linked worktree, where <worktree>/.git is a file, and operate on the hooks
 // directory git actually uses (shared with the main repository).
 func (s *CommandsIntegrationTestSuite) TestInstallUninstall_LinkedWorktree() {
-	// Isolate from the developer's global/system git config (core.hooksPath).
-	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
-
 	for _, args := range [][]string{
 		{"commit", "--allow-empty", "-m", "init"},
 		{"worktree", "add", "-b", "feat", filepath.Join(s.T().TempDir(), "wt")},
@@ -93,8 +93,6 @@ func (s *CommandsIntegrationTestSuite) TestInstallUninstall_LinkedWorktree() {
 // TestInstall_WarnsOnSharedHooksPath pins the stderr notice for a
 // core.hooksPath that lives outside the repository, and its absence otherwise.
 func (s *CommandsIntegrationTestSuite) TestInstall_WarnsOnSharedHooksPath() {
-	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	s.T().Chdir(s.repo)
 
 	stderr := captureStderr(s.T(), func() error {

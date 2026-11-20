@@ -21,6 +21,10 @@ type GitTestSuite struct {
 
 func (s *GitTestSuite) SetupTest() {
 	clearGitHookEnv(s.T())
+	// Ignore the developer's global/system git config (core.hooksPath,
+	// init.templateDir, ...) so every test stays inside its temp repository.
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	dir := s.T().TempDir()
 	s.runGit(dir, "init", "-b", "main")
 	s.runGit(dir, "config", "user.email", "test@example.com")
@@ -174,11 +178,6 @@ func (s *GitTestSuite) TestPorcelainStatusReturnsRenameDestination() {
 // resolves it: linked worktrees share the main repository's hooks, and
 // core.hooksPath (absolute or relative) wins when set.
 func (s *GitTestSuite) TestHooksDir() {
-	// Isolate from the developer's global/system git config, which may set
-	// core.hooksPath and would otherwise change the "default" expectation.
-	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
-
 	wt := filepath.Join(s.T().TempDir(), "wt")
 	s.runGit(s.repo, "worktree", "add", "-b", "feat", wt)
 	customHooks := filepath.Join(s.T().TempDir(), "custom-hooks")
@@ -219,9 +218,6 @@ func (s *GitTestSuite) TestHooksDir() {
 // TestHooksDirIsExternal pins detection of a core.hooksPath that is shared
 // outside the repository, so callers can warn before touching it.
 func (s *GitTestSuite) TestHooksDirIsExternal() {
-	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
-
 	wt := filepath.Join(s.T().TempDir(), "wt")
 	s.runGit(s.repo, "worktree", "add", "-b", "feat", wt)
 
