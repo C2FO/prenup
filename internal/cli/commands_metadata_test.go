@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -90,6 +92,10 @@ func TestRootCommandWiresSubcommands(t *testing.T) {
 		assert.Truef(t, got[want], "root should expose %q subcommand; got %v", want, got)
 	}
 	assert.False(t, got["migrate"], "migrate command should have been removed for v0.1.0")
+	// Guard SilenceErrors / SilenceUsage on root: runRoot owns stderr error
+	// formatting, so enabling Cobra's default printer would double-print errors.
+	assert.True(t, root.SilenceErrors, "root must set SilenceErrors so runRoot prints errors once")
+	assert.True(t, root.SilenceUsage, "root must set SilenceUsage so runtime errors do not dump usage")
 }
 
 // TestConfigCommandWiresSubcommands pins the two `config` children.
@@ -106,22 +112,102 @@ func TestConfigCommandWiresSubcommands(t *testing.T) {
 }
 
 // TestExitCodeError_Error covers both branches: with a wrapped err (returns
-// the wrapped message) and without one (returns a generic "exit status N").
+// the wrapped message) and without one (returns a generic "exit status N"),
+// plus Unwrap propagation for errors.Is / errors.As.
 func TestExitCodeError_Error(t *testing.T) {
 	t.Parallel()
 
+	sentinel := errors.New("boom")
 	cases := []struct {
-		name string
-		err  *exitCodeError
-		want string
+		name       string
+		err        *exitCodeError
+		want       string
+		wantUnwrap error
 	}{
-		{name: "wrapped error message wins", err: &exitCodeError{code: 42, err: errors.New("boom")}, want: "boom"},
-		{name: "no wrapped error falls back to code", err: &exitCodeError{code: 3}, want: "exit status 3"},
+		{name: "wrapped error message wins", err: &exitCodeError{code: 42, err: sentinel}, want: "boom", wantUnwrap: sentinel},
+		{name: "no wrapped error falls back to code", err: &exitCodeError{code: 3}, want: "exit status 3", wantUnwrap: nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, tc.err.Error())
+			if tc.wantUnwrap != nil {
+				assert.ErrorIs(t, tc.err, tc.wantUnwrap)
+			} else {
+				assert.NoError(t, tc.err.Unwrap())
+			}
+		})
+	}
+}
+
+// TestExecuteErrorHandling verifies that CLI/RunE errors are written to stderr
+// while bare exitCodeError results (already rendered by task sinks) stay silent.
+func TestExecuteErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		runErr     error
+		args       []string
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "success writes nothing and exits 0",
+			runErr:     nil,
+			wantCode:   0,
+			wantStderr: "",
+		},
+		{
+			name:       "plain error prints to stderr and exits 1",
+			runErr:     errors.New("no .prenup.yaml found"),
+			wantCode:   1,
+			wantStderr: "Error: no .prenup.yaml found\n",
+		},
+		{
+			name:       "exitCodeError with wrapped error prints message and preserves code",
+			runErr:     &exitCodeError{code: 2, err: errors.New("another prenup run is already in progress")},
+			wantCode:   2,
+			wantStderr: "Error: another prenup run is already in progress\n",
+		},
+		{
+			name:       "wrapped exitCodeError preserves outer context and exit code",
+			runErr:     fmt.Errorf("acquiring lock: %w", &exitCodeError{code: 2, err: errors.New("contended")}),
+			wantCode:   2,
+			wantStderr: "Error: acquiring lock: contended\n",
+		},
+		{
+			name:       "bare exitCodeError without wrapped error stays silent on stderr",
+			runErr:     &exitCodeError{code: 1},
+			wantCode:   1,
+			wantStderr: "",
+		},
+		{
+			name:       "unknown cobra flag prints error and exits 1",
+			args:       []string{"--definitely-unknown-flag"},
+			wantCode:   1,
+			wantStderr: "Error: unknown flag: --definitely-unknown-flag\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var stderr bytes.Buffer
+			cmd := &cobra.Command{
+				Use:           "prenup",
+				SilenceUsage:  true,
+				SilenceErrors: true,
+				RunE: func(_ *cobra.Command, _ []string) error {
+					return tc.runErr
+				},
+			}
+			cmd.SetErr(&stderr)
+			cmd.SetArgs(tc.args)
+
+			code := runRoot(cmd)
+			assert.Equal(t, tc.wantCode, code)
+			assert.Equal(t, tc.wantStderr, stderr.String())
 		})
 	}
 }
