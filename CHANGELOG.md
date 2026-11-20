@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- CLI subcommand and configuration errors are now written to `stderr` instead
+  of exiting silently when `SilenceErrors` is enabled on the root command
+  ([#4](https://github.com/C2FO/prenup/issues/4)).
 
 ## [[v0.1.1](https://github.com/C2FO/prenup/releases/tag/v0.1.1)] - 2026-08-14
 ### Fixed

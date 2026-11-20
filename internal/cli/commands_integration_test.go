@@ -163,6 +163,24 @@ func (s *CommandsIntegrationTestSuite) TestExecute_HelpReturnsZero() {
 	})
 }
 
+// TestExecute_MissingConfigPrintsToStderr verifies that Execute surfaces
+// subcommand errors on stderr exactly once without dumping usage.
+func (s *CommandsIntegrationTestSuite) TestExecute_MissingConfigPrintsToStderr() {
+	origArgs := os.Args
+	s.T().Cleanup(func() { os.Args = origArgs })
+	os.Args = []string{"prenup", "plan"}
+
+	var code int
+	stderr := captureStderr(s.T(), func() error {
+		code = Execute()
+		return nil
+	})
+	s.Equal(1, code)
+	s.Contains(stderr, "no .prenup.yaml found")
+	s.Equal(1, strings.Count(stderr, "Error:"))
+	s.NotContains(stderr, "Usage:")
+}
+
 func TestCommandsIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(CommandsIntegrationTestSuite))
 }

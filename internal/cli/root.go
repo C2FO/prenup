@@ -12,22 +12,33 @@ import (
 // Execute parses os.Args, dispatches to the chosen subcommand, and returns
 // the desired process exit code. A zero code means success.
 func Execute() int {
-	root := newRootCmd()
-	if err := root.Execute(); err != nil {
-		// cobra already prints its own errors; ensure we surface a non-zero
-		// exit. Individual commands that want to pick a specific code use
-		// exitCodeError below.
-		ec := &exitCodeError{}
-		if errors.As(err, &ec) {
-			return ec.code
-		}
-		return 1
+	return runRoot(newRootCmd())
+}
+
+// runRoot executes root and maps any returned error to an exit code, writing
+// user-facing errors to root.ErrOrStderr() (which defaults to os.Stderr).
+// SilenceErrors is set on root so bare exitCodeError values (used when a task
+// runner sink has already rendered the failure summary) do not produce a
+// redundant "Error: exit status N" line.
+func runRoot(root *cobra.Command) int {
+	err := root.Execute()
+	if err == nil {
+		return 0
 	}
-	return 0
+	ec := &exitCodeError{}
+	if errors.As(err, &ec) {
+		if errors.Unwrap(err) != nil {
+			_, _ = fmt.Fprintf(root.ErrOrStderr(), "Error: %v\n", err)
+		}
+		return ec.code
+	}
+	_, _ = fmt.Fprintf(root.ErrOrStderr(), "Error: %v\n", err)
+	return 1
 }
 
 // exitCodeError lets a subcommand propagate a specific exit code without
-// printing an extra usage summary.
+// printing an extra usage summary. When err is nil, runRoot suppresses stderr
+// output because the caller has already rendered the failure.
 type exitCodeError struct {
 	code int
 	err  error
@@ -38,6 +49,10 @@ func (e *exitCodeError) Error() string {
 		return fmt.Sprintf("exit status %d", e.code)
 	}
 	return e.err.Error()
+}
+
+func (e *exitCodeError) Unwrap() error {
+	return e.err
 }
 
 func newRootCmd() *cobra.Command {

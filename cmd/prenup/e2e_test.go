@@ -55,6 +55,14 @@ func mustRunGit(t *testing.T, dir string, args ...string) {
 // runPrenup executes the built binary in dir and returns stdout + exit code.
 func runPrenup(t *testing.T, binary, dir string, args ...string) (string, int) {
 	t.Helper()
+	stdout, _, exit := runPrenupWithStderr(t, binary, dir, args...)
+	return stdout, exit
+}
+
+// runPrenupWithStderr executes the built binary in dir and returns stdout,
+// stderr, and exit code.
+func runPrenupWithStderr(t *testing.T, binary, dir string, args ...string) (string, string, int) {
+	t.Helper()
 	// binary is the path returned by buildBinary in this test process.
 	cmd := exec.Command(binary, args...) //nolint:gosec // G204: binary is built locally for the test.
 	cmd.Dir = dir
@@ -77,7 +85,7 @@ func runPrenup(t *testing.T, binary, dir string, args ...string) (string, int) {
 		t.Logf("stdout:\n%s", stdout.String())
 		t.Logf("stderr:\n%s", stderr.String())
 	}
-	return stdout.String(), exit
+	return stdout.String(), stderr.String(), exit
 }
 
 func TestE2EVersion(t *testing.T) {
@@ -258,4 +266,39 @@ tasks:
 	out, exit := runPrenup(t, bin, dir, "config", "validate")
 	assert.Equal(t, 0, exit)
 	assert.Contains(t, out, "OK:")
+}
+
+func TestE2ESubcommandErrorWritesStderr(t *testing.T) {
+	bin := buildBinary(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	stdout, stderr, exit := runPrenupWithStderr(t, bin, dir, "config", "validate", filepath.Join(dir, "missing.yaml"))
+	assert.Equal(t, 1, exit)
+	assert.Empty(t, stdout)
+	assert.Contains(t, stderr, "missing.yaml")
+	assert.Equal(t, 1, strings.Count(stderr, "Error:"))
+	assert.NotContains(t, stderr, "Usage:")
+}
+
+func TestE2EFailingTaskDoesNotWriteRedundantStderrError(t *testing.T) {
+	bin := buildBinary(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\n\ngo 1.22\n"), 0o600))
+
+	cfg := `version: 1
+clean_worktree: false
+tasks:
+  - name: "Fail"
+    command: "exit 1"
+    default_selected: true
+    per_module: true
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".prenup.yaml"), []byte(cfg), 0o600))
+
+	stdout, stderr, exit := runPrenupWithStderr(t, bin, dir, "run", "--output", "json", "--no-clean-worktree")
+	assert.Equal(t, 1, exit)
+	assert.NotEmpty(t, stdout)
+	assert.Empty(t, stderr)
 }

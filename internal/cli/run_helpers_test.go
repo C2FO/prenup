@@ -190,13 +190,33 @@ func TestAcquireRepoLockSuite(t *testing.T) {
 // wrote. Panics via t.Fatal on plumbing errors to keep call sites terse.
 func captureStdout(t *testing.T, fn func() error) string {
 	t.Helper()
+	return captureStream(t, &os.Stdout, fn)
+}
+
+// captureStderr redirects os.Stderr, invokes fn, and returns whatever fn wrote.
+func captureStderr(t *testing.T, fn func() error) string {
+	t.Helper()
+	return captureStream(t, &os.Stderr, fn)
+}
+
+func captureStream(t *testing.T, target **os.File, fn func() error) string {
+	t.Helper()
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
+	defer func() { _ = r.Close() }()
+
+	orig := *target
+	*target = w
+	wClosed := false
+	defer func() {
+		*target = orig
+		if !wClosed {
+			_ = w.Close()
+		}
+	}()
 
 	fnErr := fn()
+	wClosed = true
 	require.NoError(t, w.Close())
 
 	buf, readErr := io.ReadAll(r)
