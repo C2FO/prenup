@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- `prenup install` and `prenup uninstall` now work from linked git worktrees
+  and honor `core.hooksPath`. The hooks directory is resolved with
+  `git rev-parse --git-path hooks` instead of being assumed to be
+  `<repo>/.git/hooks`, and the printed install path is the real one
+  ([#5](https://github.com/C2FO/prenup/issues/5)).
+- Tasks no longer inherit git's repository-local environment variables
+  (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, and the rest of
+  `git rev-parse --local-env-vars`) that git exports to hooks. Previously, git
+  commands run by a task, including from `per_module` directories or in
+  freshly initialized repositories, could operate on the committing worktree's
+  metadata. As a result, a task that inspects the index (for example
+  `git diff --cached`) during a partial commit now sees the real index rather
+  than git's temporary one. Per-task `env:` entries are still applied and can
+  set these variables explicitly
+  ([#6](https://github.com/C2FO/prenup/issues/6)).
 
 ## [[v0.1.2](https://github.com/C2FO/prenup/releases/tag/v0.1.2)] - 2026-11-20
 ### Fixed

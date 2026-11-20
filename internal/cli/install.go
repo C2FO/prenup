@@ -86,7 +86,7 @@ func installModeFromFlags(f installFlags) hook.Mode {
 
 func runInstall(cmd *cobra.Command) error {
 	f := readInstallFlags(cmd)
-	repoRoot, err := git.RepoRoot("")
+	hooksDir, err := git.HooksDir("")
 	if err != nil {
 		return err
 	}
@@ -95,20 +95,20 @@ func runInstall(cmd *cobra.Command) error {
 		return err
 	}
 
-	if err := installWithConflictResolution(repoRoot, binary, f); err != nil {
+	if err := installWithConflictResolution(hooksDir, binary, f); err != nil {
 		return err
 	}
 
 	_, err = fmt.Fprintf(os.Stdout, "Installed pre-commit hook at %s\n",
-		filepath.Join(repoRoot, ".git", "hooks", "pre-commit"))
+		filepath.Join(hooksDir, "pre-commit"))
 	return err
 }
 
 // installWithConflictResolution performs the install and, on ExistsError,
 // either fails fast (non-interactive contexts) or prompts the user for a
 // resolution mode and retries.
-func installWithConflictResolution(repoRoot, binary string, f installFlags) error {
-	err := hook.Install(repoRoot, binary, installModeFromFlags(f))
+func installWithConflictResolution(hooksDir, binary string, f installFlags) error {
+	err := hook.Install(hooksDir, binary, installModeFromFlags(f))
 	var existsErr *hook.ExistsError
 	if !errors.As(err, &existsErr) {
 		return err
@@ -123,7 +123,7 @@ func installWithConflictResolution(repoRoot, binary string, f installFlags) erro
 	if choice == hook.ModeAbort {
 		return errors.New("install aborted")
 	}
-	return hook.Install(repoRoot, binary, choice)
+	return hook.Install(hooksDir, binary, choice)
 }
 
 func newUninstallCmd() *cobra.Command {
@@ -131,11 +131,11 @@ func newUninstallCmd() *cobra.Command {
 		Use:   "uninstall",
 		Short: "Remove the prenup pre-commit hook",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, err := git.RepoRoot("")
+			hooksDir, err := git.HooksDir("")
 			if err != nil {
 				return err
 			}
-			if err := hook.Uninstall(repoRoot); err != nil {
+			if err := hook.Uninstall(hooksDir); err != nil {
 				return err
 			}
 			if _, err := fmt.Fprintln(os.Stdout, "Pre-commit hook removed."); err != nil {

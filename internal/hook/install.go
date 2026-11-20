@@ -35,20 +35,19 @@ func (e *ExistsError) Error() string {
 // authorship before removing the file.
 const PrenupMarker = "# prenup-managed-hook"
 
-// Install writes a pre-commit hook at repoRoot/.git/hooks/pre-commit that
-// invokes the prenup binary found at binaryPath. mode controls collision
+// Install writes a pre-commit hook at hooksDir/pre-commit that invokes the
+// prenup binary found at binaryPath. hooksDir is the directory git runs hooks
+// from (see git.HooksDir); it is created if missing. mode controls collision
 // handling.
-func Install(repoRoot, binaryPath string, mode Mode) error {
-	hookPath := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+func Install(hooksDir, binaryPath string, mode Mode) error {
+	hookPath := filepath.Join(hooksDir, "pre-commit")
 
-	// Git hooks live in .git/hooks (already restrictive, owned by the user).
 	// 0o750 satisfies gosec G301 while remaining traversable for the user.
-	if err := os.MkdirAll(filepath.Dir(hookPath), 0o750); err != nil {
+	if err := os.MkdirAll(hooksDir, 0o750); err != nil {
 		return fmt.Errorf("ensuring hooks dir: %w", err)
 	}
 
-	// hookPath is constructed from the validated repoRoot plus a fixed suffix.
-	existing, err := os.ReadFile(hookPath) //nolint:gosec // G304: hookPath is a constructed path under .git/hooks.
+	existing, err := os.ReadFile(hookPath) //nolint:gosec // G304: hookPath is a fixed name under the resolved hooks dir.
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("reading existing hook: %w", err)
 	}
@@ -66,7 +65,7 @@ func Install(repoRoot, binaryPath string, mode Mode) error {
 			return fmt.Errorf("backing up existing hook: %w", err)
 		}
 	case mode == ModeChain:
-		localPath := filepath.Join(repoRoot, ".git", "hooks", "pre-commit.local")
+		localPath := filepath.Join(hooksDir, "pre-commit.local")
 		if err := os.Rename(hookPath, localPath); err != nil {
 			return fmt.Errorf("saving existing hook as pre-commit.local: %w", err)
 		}
@@ -108,12 +107,12 @@ func generateScript(binaryPath string, chain bool) string {
 	return b.String()
 }
 
-// Uninstall removes the managed hook at repoRoot. If a .prenup-backup exists,
+// Uninstall removes the managed hook in hooksDir. If a .prenup-backup exists,
 // it is restored; otherwise the hook is simply deleted. Returns nil if no
 // managed hook is installed.
-func Uninstall(repoRoot string) error {
-	hookPath := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
-	data, err := os.ReadFile(hookPath) //nolint:gosec // G304: hookPath is constructed under .git/hooks.
+func Uninstall(hooksDir string) error {
+	hookPath := filepath.Join(hooksDir, "pre-commit")
+	data, err := os.ReadFile(hookPath) //nolint:gosec // G304: hookPath is a fixed name under the resolved hooks dir.
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -131,7 +130,7 @@ func Uninstall(repoRoot string) error {
 		}
 		return nil
 	}
-	localPath := filepath.Join(repoRoot, ".git", "hooks", "pre-commit.local")
+	localPath := filepath.Join(hooksDir, "pre-commit.local")
 	if _, err := os.Stat(localPath); err == nil {
 		if err := os.Rename(localPath, hookPath); err != nil {
 			return fmt.Errorf("restoring chained pre-commit.local: %w", err)

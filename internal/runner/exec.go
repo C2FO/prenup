@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -42,9 +43,7 @@ func (b BashExecutor) Run(ctx context.Context, command, workingDir string, env m
 	if workingDir != "" {
 		cmd.Dir = workingDir
 	}
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), flattenEnv(env)...)
-	}
+	cmd.Env = taskEnv(os.Environ(), env)
 	// On ctx cancel, ask politely first; SIGKILL after the grace period.
 	cmd.Cancel = func() error {
 		// SIGTERM may legitimately fail (process already gone); ignore.
@@ -105,6 +104,45 @@ func pumpLines(wg *sync.WaitGroup, r io.Reader, stream Stream, onLine func(Strea
 // maxScannerLine bounds a single line's length. 1 MB is generous for human
 // output but small enough to keep memory bounded against pathological tools.
 const maxScannerLine = 1024 * 1024
+
+// gitLocalEnvVars are the variables reported by `git rev-parse
+// --local-env-vars`. git exports some of them (notably GIT_DIR and
+// GIT_INDEX_FILE) to hooks, and githooks(5) says to clear them before running
+// git against any other repository or worktree. Left in place they make git
+// commands run by a task operate on the committing worktree's metadata, even
+// from a nested module directory or a freshly initialized temp repo.
+var gitLocalEnvVars = map[string]struct{}{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
+	"GIT_CONFIG":                       {},
+	"GIT_CONFIG_PARAMETERS":            {},
+	"GIT_CONFIG_COUNT":                 {},
+	"GIT_OBJECT_DIRECTORY":             {},
+	"GIT_DIR":                          {},
+	"GIT_WORK_TREE":                    {},
+	"GIT_IMPLICIT_WORK_TREE":           {},
+	"GIT_GRAFT_FILE":                   {},
+	"GIT_INDEX_FILE":                   {},
+	"GIT_NO_REPLACE_OBJECTS":           {},
+	"GIT_REPLACE_REF_BASE":             {},
+	"GIT_PREFIX":                       {},
+	"GIT_SHALLOW_FILE":                 {},
+	"GIT_COMMON_DIR":                   {},
+}
+
+// taskEnv builds a task's environment: environ minus git's repository-local
+// variables, followed by the task's own overrides. Overrides come last so
+// they win, including when a task deliberately sets one of the scrubbed vars.
+func taskEnv(environ []string, overrides map[string]string) []string {
+	out := make([]string, 0, len(environ)+len(overrides))
+	for _, kv := range environ {
+		key, _, _ := strings.Cut(kv, "=")
+		if _, drop := gitLocalEnvVars[key]; drop {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, flattenEnv(overrides)...)
+}
 
 func flattenEnv(env map[string]string) []string {
 	out := make([]string, 0, len(env))

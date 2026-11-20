@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -53,6 +54,27 @@ func RepoRoot(dir string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// HooksDir returns the absolute path of the directory git runs hooks from for
+// the checkout containing dir. It defers to git so that linked worktrees
+// (which share the main repository's hooks) and core.hooksPath are honored.
+// A relative core.hooksPath is resolved against the checkout root, matching
+// where git runs hooks from.
+func HooksDir(dir string) (string, error) {
+	root, err := RepoRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	out, err := (&Runner{Dir: root}).run("rev-parse", "--git-path", "hooks")
+	if err != nil {
+		return "", err
+	}
+	hooks := strings.TrimSpace(out)
+	if !filepath.IsAbs(hooks) {
+		hooks = filepath.Join(root, hooks)
+	}
+	return filepath.Clean(hooks), nil
 }
 
 // StagedFiles returns paths, relative to the repo root, that have staged

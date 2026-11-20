@@ -20,6 +20,7 @@ type GitTestSuite struct {
 }
 
 func (s *GitTestSuite) SetupTest() {
+	clearGitHookEnv(s.T())
 	dir := s.T().TempDir()
 	s.runGit(dir, "init", "-b", "main")
 	s.runGit(dir, "config", "user.email", "test@example.com")
@@ -169,6 +170,52 @@ func (s *GitTestSuite) TestPorcelainStatusReturnsRenameDestination() {
 	s.NotContains(files, "original.txt", "source path of a rename must not be reported as a separate entry")
 }
 
+// TestHooksDir pins that the hooks directory is resolved the way git itself
+// resolves it: linked worktrees share the main repository's hooks, and
+// core.hooksPath (absolute or relative) wins when set.
+func (s *GitTestSuite) TestHooksDir() {
+	// Isolate from the developer's global/system git config, which may set
+	// core.hooksPath and would otherwise change the "default" expectation.
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	wt := filepath.Join(s.T().TempDir(), "wt")
+	s.runGit(s.repo, "worktree", "add", "-b", "feat", wt)
+	customHooks := filepath.Join(s.T().TempDir(), "custom-hooks")
+
+	tests := []struct {
+		name      string
+		hooksPath string
+		dir       string
+		want      string
+	}{
+		{name: "main checkout uses .git/hooks", dir: s.repo, want: filepath.Join(s.repo, ".git", "hooks")},
+		{name: "linked worktree shares main repo hooks", dir: wt, want: filepath.Join(s.repo, ".git", "hooks")},
+		{name: "absolute core.hooksPath wins in worktree", hooksPath: customHooks, dir: wt, want: customHooks},
+		{name: "relative core.hooksPath resolves against checkout root", hooksPath: "relhooks", dir: wt, want: filepath.Join(wt, "relhooks")},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			if tt.hooksPath == "" {
+				cmd := exec.Command("git", "config", "--unset", "core.hooksPath")
+				cmd.Dir = s.repo
+				_ = cmd.Run() // exit 5 when unset is expected.
+			} else {
+				s.runGit(s.repo, "config", "core.hooksPath", tt.hooksPath)
+			}
+
+			got, err := HooksDir(tt.dir)
+			s.Require().NoError(err)
+
+			wantEval, evalErr := filepath.EvalSymlinks(filepath.Dir(tt.want))
+			s.Require().NoError(evalErr)
+			gotEval, evalErr := filepath.EvalSymlinks(filepath.Dir(got))
+			s.Require().NoError(evalErr)
+			s.Equal(filepath.Join(wantEval, filepath.Base(tt.want)), filepath.Join(gotEval, filepath.Base(got)))
+		})
+	}
+}
+
 func (s *GitTestSuite) TestTrackedFilesSnapshot() {
 	tracked, err := s.r.TrackedFiles()
 	s.Require().NoError(err)
@@ -178,4 +225,17 @@ func (s *GitTestSuite) TestTrackedFilesSnapshot() {
 
 func TestGitSuite(t *testing.T) {
 	suite.Run(t, new(GitTestSuite))
+}
+
+// clearGitHookEnv unsets the repository-local variables git exports to hooks
+// so git commands in the test act only on the repositories the test creates,
+// even when the suite itself runs from a pre-commit hook.
+func clearGitHookEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX", "GIT_COMMON_DIR"} {
+		t.Setenv(k, "") // registers restoration of the original value.
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("unsetting %s: %v", k, err)
+		}
+	}
 }
