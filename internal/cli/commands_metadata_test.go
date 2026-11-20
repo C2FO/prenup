@@ -203,7 +203,13 @@ func TestExecuteErrorHandling(t *testing.T) {
 				},
 			}
 			cmd.SetErr(&stderr)
-			cmd.SetArgs(tc.args)
+			// Cobra treats nil args as "use os.Args[1:]", which would pick up
+			// go test flags; always pass a non-nil slice.
+			args := tc.args
+			if args == nil {
+				args = []string{}
+			}
+			cmd.SetArgs(args)
 
 			code := runRoot(cmd)
 			assert.Equal(t, tc.wantCode, code)
