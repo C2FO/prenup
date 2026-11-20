@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -111,11 +112,15 @@ const maxScannerLine = 1024 * 1024
 // git against any other repository or worktree. Left in place they make git
 // commands run by a task operate on the committing worktree's metadata, even
 // from a nested module directory or a freshly initialized temp repo.
+//
+// GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS are deliberately absent despite
+// being listed by git. They carry configuration, not repository location, and
+// users commonly set GIT_CONFIG_COUNT/KEY_n/VALUE_n to inject credentials or
+// url rewrites that tasks (for example `go mod download`) depend on. Dropping
+// COUNT alone would also orphan the matching KEY_n/VALUE_n variables.
 var gitLocalEnvVars = map[string]struct{}{
 	"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
 	"GIT_CONFIG":                       {},
-	"GIT_CONFIG_PARAMETERS":            {},
-	"GIT_CONFIG_COUNT":                 {},
 	"GIT_OBJECT_DIRECTORY":             {},
 	"GIT_DIR":                          {},
 	"GIT_WORK_TREE":                    {},
@@ -133,9 +138,19 @@ var gitLocalEnvVars = map[string]struct{}{
 // variables, followed by the task's own overrides. Overrides come last so
 // they win, including when a task deliberately sets one of the scrubbed vars.
 func taskEnv(environ []string, overrides map[string]string) []string {
+	return taskEnvFold(environ, overrides, runtime.GOOS == "windows")
+}
+
+// taskEnvFold is taskEnv with explicit control over name matching. Windows
+// treats environment variable names case-insensitively, so a variable spelled
+// `Git_Dir` must be scrubbed there; POSIX names are case-sensitive.
+func taskEnvFold(environ []string, overrides map[string]string, foldCase bool) []string {
 	out := make([]string, 0, len(environ)+len(overrides))
 	for _, kv := range environ {
 		key, _, _ := strings.Cut(kv, "=")
+		if foldCase {
+			key = strings.ToUpper(key)
+		}
 		if _, drop := gitLocalEnvVars[key]; drop {
 			continue
 		}

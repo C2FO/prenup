@@ -21,7 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `git diff --cached`) during a partial commit now sees the real index rather
   than git's temporary one. Per-task `env:` entries are still applied and can
   set these variables explicitly
-  ([#6](https://github.com/C2FO/prenup/issues/6)).
+  ([#6](https://github.com/C2FO/prenup/issues/6)). `GIT_CONFIG_COUNT` and
+  `GIT_CONFIG_PARAMETERS` are left intact so user-supplied git configuration
+  (for example credential or `insteadOf` rewrites) still reaches tasks, and
+  names are matched case-insensitively on Windows.
+- `prenup install` and `prenup uninstall` print a notice on stderr when
+  `core.hooksPath` points outside the repository, since the hook is then
+  shared by every repository using that directory
+  ([#5](https://github.com/C2FO/prenup/issues/5)).
 
 ## [[v0.1.2](https://github.com/C2FO/prenup/releases/tag/v0.1.2)] - 2026-11-20
 ### Fixed

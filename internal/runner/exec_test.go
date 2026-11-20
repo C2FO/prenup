@@ -78,6 +78,14 @@ func TestTaskEnv(t *testing.T) {
 			want:      []string{"A=1", "B=2", "GIT_DIR=/custom"},
 		},
 		{
+			name: "keeps git config injection vars",
+			environ: []string{
+				"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=url.x.insteadOf", "GIT_CONFIG_VALUE_0=y",
+				"GIT_CONFIG_PARAMETERS='a=b'", "GIT_DIR=.git",
+			},
+			want: []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=url.x.insteadOf", "GIT_CONFIG_VALUE_0=y", "GIT_CONFIG_PARAMETERS='a=b'"},
+		},
+		{
 			name:    "empty environment",
 			environ: nil,
 			want:    []string{},
@@ -92,6 +100,15 @@ func TestTaskEnv(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestTaskEnvFold verifies the Windows-style case-insensitive matching.
+func TestTaskEnvFold(t *testing.T) {
+	t.Parallel()
+
+	environ := []string{"Git_Dir=/r/.git", "git_index_file=/i", "Path=/bin"}
+	assert.Equal(t, []string{"Path=/bin"}, taskEnvFold(environ, nil, true))
+	assert.Equal(t, environ, taskEnvFold(environ, nil, false))
 }
 
 // TestBashExecutor_Run_ScrubsGitLocalEnv exercises the real subprocess path:

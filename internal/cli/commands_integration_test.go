@@ -90,6 +90,31 @@ func (s *CommandsIntegrationTestSuite) TestInstallUninstall_LinkedWorktree() {
 	s.NoFileExists(hook)
 }
 
+// TestInstall_WarnsOnSharedHooksPath pins the stderr notice for a
+// core.hooksPath that lives outside the repository, and its absence otherwise.
+func (s *CommandsIntegrationTestSuite) TestInstall_WarnsOnSharedHooksPath() {
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	s.T().Chdir(s.repo)
+
+	stderr := captureStderr(s.T(), func() error {
+		return runInstall(newInstallCmd())
+	})
+	s.NotContains(stderr, "core.hooksPath")
+
+	shared := filepath.Join(s.T().TempDir(), "shared-hooks")
+	cmd := exec.Command("git", "config", "core.hooksPath", shared) //nolint:gosec // G204: fixed binary, test-controlled path.
+	cmd.Dir = s.repo
+	out, err := cmd.CombinedOutput()
+	s.Require().NoErrorf(err, "git config: %s", string(out))
+
+	stderr = captureStderr(s.T(), func() error {
+		return runInstall(newInstallCmd())
+	})
+	s.Contains(stderr, "core.hooksPath points outside this repository")
+	s.FileExists(filepath.Join(shared, "pre-commit"))
+}
+
 // worktreePath returns the path of the single linked worktree created by a test.
 func (s *CommandsIntegrationTestSuite) worktreePath() string {
 	s.T().Helper()

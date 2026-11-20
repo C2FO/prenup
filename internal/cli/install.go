@@ -99,9 +99,24 @@ func runInstall(cmd *cobra.Command) error {
 		return err
 	}
 
+	warnIfSharedHooksDir(hooksDir)
 	_, err = fmt.Fprintf(os.Stdout, "Installed pre-commit hook at %s\n",
 		filepath.Join(hooksDir, "pre-commit"))
 	return err
+}
+
+// warnIfSharedHooksDir writes a notice to stderr when core.hooksPath points
+// outside this repository, because the hook is then shared by every
+// repository using that directory. A failed check is not worth failing the
+// command for, so it stays silent.
+func warnIfSharedHooksDir(hooksDir string) {
+	external, err := git.HooksDirIsExternal("", hooksDir)
+	if err != nil || !external {
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr,
+		"note: core.hooksPath points outside this repository; %s is shared by every repository that uses it\n",
+		hooksDir)
 }
 
 // installWithConflictResolution performs the install and, on ExistsError,
@@ -135,6 +150,7 @@ func newUninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			warnIfSharedHooksDir(hooksDir)
 			if err := hook.Uninstall(hooksDir); err != nil {
 				return err
 			}

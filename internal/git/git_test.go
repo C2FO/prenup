@@ -216,6 +216,49 @@ func (s *GitTestSuite) TestHooksDir() {
 	}
 }
 
+// TestHooksDirIsExternal pins detection of a core.hooksPath that is shared
+// outside the repository, so callers can warn before touching it.
+func (s *GitTestSuite) TestHooksDirIsExternal() {
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	wt := filepath.Join(s.T().TempDir(), "wt")
+	s.runGit(s.repo, "worktree", "add", "-b", "feat", wt)
+
+	tests := []struct {
+		name      string
+		hooksPath string
+		dir       string
+		want      bool
+	}{
+		{name: "default hooks dir is internal", dir: s.repo},
+		{name: "linked worktree uses common git dir", dir: wt},
+		{name: "relative hooksPath inside checkout is internal", hooksPath: "relhooks", dir: s.repo},
+		{name: "absolute hooksPath outside repo is external", hooksPath: filepath.Join(s.T().TempDir(), "shared"), dir: s.repo, want: true},
+		{name: "external hooksPath seen from linked worktree", hooksPath: filepath.Join(s.T().TempDir(), "shared2"), dir: wt, want: true},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			cmd := exec.Command("git", "config", "--unset", "core.hooksPath")
+			cmd.Dir = s.repo
+			_ = cmd.Run() // exit 5 when unset is expected.
+			if tt.hooksPath != "" {
+				s.runGit(s.repo, "config", "core.hooksPath", tt.hooksPath)
+			}
+			hooks, err := HooksDir(tt.dir)
+			s.Require().NoError(err)
+			got, err := HooksDirIsExternal(tt.dir, hooks)
+			s.Require().NoError(err)
+			s.Equal(tt.want, got)
+		})
+	}
+}
+
+func (s *GitTestSuite) TestHooksDirIsExternal_NotARepo() {
+	_, err := HooksDirIsExternal(s.T().TempDir(), "/x")
+	s.Require().Error(err)
+}
+
 func (s *GitTestSuite) TestTrackedFilesSnapshot() {
 	tracked, err := s.r.TrackedFiles()
 	s.Require().NoError(err)
