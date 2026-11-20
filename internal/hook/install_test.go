@@ -9,20 +9,18 @@ import (
 )
 
 // HookInstallTestSuite groups behavioral tests for Install/Uninstall.
-// Each method gets a fresh fake repo with .git/hooks/ pre-created so
-// the code under test has somewhere to write; tests do not need a real
-// git repo for these checks.
+// Each method gets a fresh hooks directory; tests do not need a real git
+// repo because Install/Uninstall operate on an already-resolved hooks dir.
 type HookInstallTestSuite struct {
 	suite.Suite
-	repo string // absolute path to the temp repo dir
-	hook string // absolute path to .git/hooks/pre-commit inside repo
+	hooksDir string // absolute path to the temp hooks directory
+	hook     string // absolute path to pre-commit inside hooksDir
 }
 
 func (s *HookInstallTestSuite) SetupTest() {
-	dir := s.T().TempDir()
-	s.Require().NoError(os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o750))
-	s.repo = dir
-	s.hook = filepath.Join(dir, ".git", "hooks", "pre-commit")
+	s.hooksDir = filepath.Join(s.T().TempDir(), "hooks")
+	s.Require().NoError(os.MkdirAll(s.hooksDir, 0o750))
+	s.hook = filepath.Join(s.hooksDir, "pre-commit")
 }
 
 // writeHook drops a fake (non-prenup) executable hook script at the
@@ -45,7 +43,7 @@ func (s *HookInstallTestSuite) readHook(path string) string {
 }
 
 func (s *HookInstallTestSuite) TestInstallOnEmptyWritesManagedHook() {
-	s.Require().NoError(Install(s.repo, "/usr/local/bin/prenup", ModeAbort))
+	s.Require().NoError(Install(s.hooksDir, "/usr/local/bin/prenup", ModeAbort))
 
 	body := s.readHook(s.hook)
 	s.Contains(body, PrenupMarker)
@@ -56,10 +54,20 @@ func (s *HookInstallTestSuite) TestInstallOnEmptyWritesManagedHook() {
 	s.NotZero(info.Mode()&0o100, "hook must be executable")
 }
 
+// TestInstallCreatesMissingHooksDir covers hooks directories (e.g. a
+// core.hooksPath target) that do not exist yet.
+func (s *HookInstallTestSuite) TestInstallCreatesMissingHooksDir() {
+	missing := filepath.Join(s.T().TempDir(), "not", "yet", "created")
+
+	s.Require().NoError(Install(missing, "/usr/local/bin/prenup", ModeAbort))
+
+	s.Contains(s.readHook(filepath.Join(missing, "pre-commit")), PrenupMarker)
+}
+
 func (s *HookInstallTestSuite) TestInstallAbortsOnExistingNonPrenupHook() {
 	s.writeHook("#!/usr/bin/env bash\necho hi\n")
 
-	err := Install(s.repo, "/usr/local/bin/prenup", ModeAbort)
+	err := Install(s.hooksDir, "/usr/local/bin/prenup", ModeAbort)
 	var existsErr *ExistsError
 	s.Require().ErrorAs(err, &existsErr, "expected ExistsError, got %v", err)
 }
@@ -68,7 +76,7 @@ func (s *HookInstallTestSuite) TestInstallReplaceBacksUp() {
 	original := "#!/usr/bin/env bash\necho original\n"
 	s.writeHook(original)
 
-	s.Require().NoError(Install(s.repo, "/usr/local/bin/prenup", ModeReplace))
+	s.Require().NoError(Install(s.hooksDir, "/usr/local/bin/prenup", ModeReplace))
 
 	s.Equal(original, s.readHook(s.hook+".prenup-backup"))
 	s.Contains(s.readHook(s.hook), PrenupMarker)
@@ -78,9 +86,9 @@ func (s *HookInstallTestSuite) TestInstallChainKeepsOriginalAsLocal() {
 	original := "#!/usr/bin/env bash\necho original\n"
 	s.writeHook(original)
 
-	s.Require().NoError(Install(s.repo, "/usr/local/bin/prenup", ModeChain))
+	s.Require().NoError(Install(s.hooksDir, "/usr/local/bin/prenup", ModeChain))
 
-	s.Equal(original, s.readHook(filepath.Join(s.repo, ".git", "hooks", "pre-commit.local")))
+	s.Equal(original, s.readHook(filepath.Join(s.hooksDir, "pre-commit.local")))
 
 	managed := s.readHook(s.hook)
 	s.Contains(managed, PrenupMarker)
@@ -94,8 +102,8 @@ func (s *HookInstallTestSuite) TestInstallChainKeepsOriginalAsLocal() {
 // is itself a prenup-managed hook -- otherwise upgrades and binary
 // path changes would be impossible without a separate uninstall step.
 func (s *HookInstallTestSuite) TestInstallReplacesManagedHookEvenInAbortMode() {
-	s.Require().NoError(Install(s.repo, "/old/prenup", ModeAbort))
-	s.Require().NoError(Install(s.repo, "/new/prenup", ModeAbort))
+	s.Require().NoError(Install(s.hooksDir, "/old/prenup", ModeAbort))
+	s.Require().NoError(Install(s.hooksDir, "/new/prenup", ModeAbort))
 
 	body := s.readHook(s.hook)
 	s.Contains(body, "/new/prenup")
@@ -105,9 +113,9 @@ func (s *HookInstallTestSuite) TestInstallReplacesManagedHookEvenInAbortMode() {
 func (s *HookInstallTestSuite) TestUninstallRestoresBackup() {
 	original := "#!/usr/bin/env bash\necho original\n"
 	s.writeHook(original)
-	s.Require().NoError(Install(s.repo, "/usr/local/bin/prenup", ModeReplace))
+	s.Require().NoError(Install(s.hooksDir, "/usr/local/bin/prenup", ModeReplace))
 
-	s.Require().NoError(Uninstall(s.repo))
+	s.Require().NoError(Uninstall(s.hooksDir))
 	s.Equal(original, s.readHook(s.hook))
 	_, err := os.Stat(s.hook + ".prenup-backup")
 	s.True(os.IsNotExist(err), "backup must be removed after restore")
@@ -116,13 +124,13 @@ func (s *HookInstallTestSuite) TestUninstallRestoresBackup() {
 func (s *HookInstallTestSuite) TestUninstallRefusesUnmanagedHook() {
 	s.writeHook("#!/usr/bin/env bash\necho hi\n")
 
-	err := Uninstall(s.repo)
+	err := Uninstall(s.hooksDir)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "not installed by prenup")
 }
 
 func (s *HookInstallTestSuite) TestUninstallNoOpWhenMissing() {
-	s.Require().NoError(Uninstall(s.repo))
+	s.Require().NoError(Uninstall(s.hooksDir))
 }
 
 func TestHookInstallSuite(t *testing.T) {

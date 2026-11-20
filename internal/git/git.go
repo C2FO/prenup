@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -53,6 +54,75 @@ func RepoRoot(dir string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// HooksDir returns the absolute path of the directory git runs hooks from for
+// the checkout containing dir. It defers to git so that linked worktrees
+// (which share the main repository's hooks) and core.hooksPath are honored.
+// A relative core.hooksPath is resolved against the checkout root, matching
+// where git runs hooks from.
+func HooksDir(dir string) (string, error) {
+	root, err := RepoRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	out, err := (&Runner{Dir: root}).run("rev-parse", "--git-path", "hooks")
+	if err != nil {
+		return "", err
+	}
+	hooks := strings.TrimSpace(out)
+	if !filepath.IsAbs(hooks) {
+		hooks = filepath.Join(root, hooks)
+	}
+	return filepath.Clean(hooks), nil
+}
+
+// HooksDirIsExternal reports whether hooksDir lies outside both the checkout
+// containing dir and its git directory, which happens when core.hooksPath
+// points at a directory shared by several repositories. Installing or removing
+// a hook there affects every repository that uses it.
+func HooksDirIsExternal(dir, hooksDir string) (bool, error) {
+	root, err := RepoRoot(dir)
+	if err != nil {
+		return false, err
+	}
+	out, err := (&Runner{Dir: root}).run("rev-parse", "--git-common-dir")
+	if err != nil {
+		return false, err
+	}
+	common := strings.TrimSpace(out)
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(root, common)
+	}
+	target := resolvePath(hooksDir)
+	for _, base := range []string{root, common} {
+		if isWithin(resolvePath(base), target) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// resolvePath cleans p and resolves symlinks through its deepest existing
+// ancestor, so paths that do not exist yet still compare correctly.
+func resolvePath(p string) string {
+	p = filepath.Clean(p)
+	var tail []string
+	for cur := p; ; cur = filepath.Dir(cur) {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			parts := append([]string{resolved}, tail...)
+			return filepath.Join(parts...)
+		}
+		if filepath.Dir(cur) == cur {
+			return p
+		}
+		tail = append([]string{filepath.Base(cur)}, tail...)
+	}
+}
+
+func isWithin(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // StagedFiles returns paths, relative to the repo root, that have staged

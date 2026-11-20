@@ -19,6 +19,11 @@ type CommandsIntegrationTestSuite struct {
 }
 
 func (s *CommandsIntegrationTestSuite) SetupTest() {
+	clearGitHookEnv(s.T())
+	// Ignore the developer's global/system git config (core.hooksPath,
+	// init.templateDir, ...) so every test stays inside its temp repository.
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	dir := s.T().TempDir()
 	for _, args := range [][]string{
 		{"init", "-b", "main"},
@@ -59,6 +64,72 @@ func (s *CommandsIntegrationTestSuite) TestRunInstall_HappyPath() {
 	s.NotZero(info.Mode()&0o100, "hook should be executable")
 }
 
+// TestInstallUninstall_LinkedWorktree pins that install/uninstall work from a
+// linked worktree, where <worktree>/.git is a file, and operate on the hooks
+// directory git actually uses (shared with the main repository).
+func (s *CommandsIntegrationTestSuite) TestInstallUninstall_LinkedWorktree() {
+	for _, args := range [][]string{
+		{"commit", "--allow-empty", "-m", "init"},
+		{"worktree", "add", "-b", "feat", filepath.Join(s.T().TempDir(), "wt")},
+	} {
+		cmd := exec.Command("git", args...) //nolint:gosec // G204: fixed binary, internal args.
+		cmd.Dir = s.repo
+		out, err := cmd.CombinedOutput()
+		s.Require().NoErrorf(err, "git %s: %s", strings.Join(args, " "), string(out))
+	}
+	wt := s.worktreePath()
+	s.T().Chdir(wt)
+
+	out := captureStdout(s.T(), func() error { return runInstall(newInstallCmd()) })
+	hook := filepath.Join(s.repo, ".git", "hooks", "pre-commit")
+	s.FileExists(hook)
+	s.Contains(out, "hooks")
+
+	uninstall := newUninstallCmd()
+	_ = captureStdout(s.T(), func() error { return uninstall.RunE(uninstall, nil) })
+	s.NoFileExists(hook)
+}
+
+// TestInstall_WarnsOnSharedHooksPath pins the stderr notice for a
+// core.hooksPath that lives outside the repository, and its absence otherwise.
+func (s *CommandsIntegrationTestSuite) TestInstall_WarnsOnSharedHooksPath() {
+	s.T().Chdir(s.repo)
+
+	stderr := captureStderr(s.T(), func() error {
+		return runInstall(newInstallCmd())
+	})
+	s.NotContains(stderr, "core.hooksPath")
+
+	shared := filepath.Join(s.T().TempDir(), "shared-hooks")
+	cmd := exec.Command("git", "config", "core.hooksPath", shared) //nolint:gosec // G204: fixed binary, test-controlled path.
+	cmd.Dir = s.repo
+	out, err := cmd.CombinedOutput()
+	s.Require().NoErrorf(err, "git config: %s", string(out))
+
+	stderr = captureStderr(s.T(), func() error {
+		return runInstall(newInstallCmd())
+	})
+	s.Contains(stderr, "core.hooksPath points outside this repository")
+	s.FileExists(filepath.Join(shared, "pre-commit"))
+}
+
+// worktreePath returns the path of the single linked worktree created by a test.
+func (s *CommandsIntegrationTestSuite) worktreePath() string {
+	s.T().Helper()
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = s.repo
+	out, err := cmd.Output()
+	s.Require().NoError(err)
+	var paths []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok {
+			paths = append(paths, p)
+		}
+	}
+	s.Require().Len(paths, 2, "expected main checkout plus one linked worktree")
+	return paths[1]
+}
+
 // TestInstallWithConflictResolution_NonInteractiveFailsFast pins the
 // documented CI/scripting contract: if a hook already exists, --non-interactive
 // (or a non-TTY stdin) surfaces the conflict as an error rather than
@@ -69,7 +140,7 @@ func (s *CommandsIntegrationTestSuite) TestInstallWithConflictResolution_NonInte
 	s.Require().NoError(os.WriteFile(filepath.Join(hooksDir, "pre-commit"),
 		[]byte("#!/bin/sh\necho existing\n"), 0o600))
 
-	err := installWithConflictResolution(s.repo, "/tmp/prenup", installFlags{nonInteractive: true})
+	err := installWithConflictResolution(hooksDir, "/tmp/prenup", installFlags{nonInteractive: true})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "already exists")
 }
@@ -83,7 +154,7 @@ func (s *CommandsIntegrationTestSuite) TestInstallWithConflictResolution_ForceRe
 	s.Require().NoError(os.WriteFile(filepath.Join(hooksDir, "pre-commit"),
 		[]byte("#!/bin/sh\necho existing\n"), 0o600))
 
-	err := installWithConflictResolution(s.repo, "/tmp/prenup", installFlags{force: true})
+	err := installWithConflictResolution(hooksDir, "/tmp/prenup", installFlags{force: true})
 	s.Require().NoError(err)
 
 	data, err := os.ReadFile(filepath.Join(hooksDir, "pre-commit")) //nolint:gosec // G304: test-controlled path inside t.TempDir().
@@ -183,4 +254,17 @@ func (s *CommandsIntegrationTestSuite) TestExecute_MissingConfigPrintsToStderr()
 
 func TestCommandsIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(CommandsIntegrationTestSuite))
+}
+
+// clearGitHookEnv unsets the repository-local variables git exports to hooks
+// so git commands in the test act only on the repositories the test creates,
+// even when the suite itself runs from a pre-commit hook.
+func clearGitHookEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX", "GIT_COMMON_DIR"} {
+		t.Setenv(k, "") // registers restoration of the original value.
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("unsetting %s: %v", k, err)
+		}
+	}
 }

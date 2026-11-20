@@ -44,6 +44,97 @@ func TestFlattenEnv(t *testing.T) {
 	}
 }
 
+// TestTaskEnv verifies that git's repository-local environment variables are
+// dropped from the inherited environment while everything else is kept, and
+// that explicit per-task overrides always win.
+func TestTaskEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		environ   []string
+		overrides map[string]string
+		want      []string
+	}{
+		{
+			name:    "drops git local env vars",
+			environ: []string{"PATH=/bin", "GIT_DIR=/r/.git/worktrees/w", "GIT_INDEX_FILE=/r/.git/worktrees/w/index", "HOME=/h"},
+			want:    []string{"PATH=/bin", "HOME=/h"},
+		},
+		{
+			name:    "keeps unrelated git vars",
+			environ: []string{"GIT_AUTHOR_NAME=a", "GIT_EDITOR=:", "GIT_SSH_COMMAND=ssh", "GIT_DIR=.git"},
+			want:    []string{"GIT_AUTHOR_NAME=a", "GIT_EDITOR=:", "GIT_SSH_COMMAND=ssh"},
+		},
+		{
+			name:    "drops work tree prefix and common dir",
+			environ: []string{"GIT_WORK_TREE=/w", "GIT_PREFIX=sub/", "GIT_COMMON_DIR=/c", "X=1"},
+			want:    []string{"X=1"},
+		},
+		{
+			name:      "task env override wins even for git local vars",
+			environ:   []string{"GIT_DIR=/r/.git", "A=1"},
+			overrides: map[string]string{"GIT_DIR": "/custom", "B": "2"},
+			want:      []string{"A=1", "B=2", "GIT_DIR=/custom"},
+		},
+		{
+			name: "keeps git config injection vars",
+			environ: []string{
+				"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=url.x.insteadOf", "GIT_CONFIG_VALUE_0=y",
+				"GIT_CONFIG_PARAMETERS='a=b'", "GIT_DIR=.git",
+			},
+			want: []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=url.x.insteadOf", "GIT_CONFIG_VALUE_0=y", "GIT_CONFIG_PARAMETERS='a=b'"},
+		},
+		{
+			name:    "empty environment",
+			environ: nil,
+			want:    []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := taskEnv(tt.environ, tt.overrides)
+			sort.Strings(got)
+			sort.Strings(tt.want)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestTaskEnvFold verifies the Windows-style case-insensitive matching.
+func TestTaskEnvFold(t *testing.T) {
+	t.Parallel()
+
+	environ := []string{"Git_Dir=/r/.git", "git_index_file=/i", "Path=/bin"}
+	assert.Equal(t, []string{"Path=/bin"}, taskEnvFold(environ, nil, true))
+	assert.Equal(t, environ, taskEnvFold(environ, nil, false))
+}
+
+// TestBashExecutor_Run_ScrubsGitLocalEnv exercises the real subprocess path:
+// a hook-provided GIT_DIR must not reach the task, but a task-level override
+// must. Not parallel because it mutates the process environment.
+func TestBashExecutor_Run_ScrubsGitLocalEnv(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available on this platform")
+	}
+	t.Setenv("GIT_DIR", "/leaked/git/dir")
+	t.Setenv("GIT_INDEX_FILE", "/leaked/index")
+
+	run := func(env map[string]string) string {
+		var out []string
+		err := BashExecutor{}.Run(context.Background(),
+			`echo "dir=${GIT_DIR-unset} index=${GIT_INDEX_FILE-unset}"`, "", env,
+			func(_ Stream, txt string) { out = append(out, txt) })
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		return out[0]
+	}
+
+	assert.Equal(t, "dir=unset index=unset", run(nil))
+	assert.Equal(t, "dir=/explicit index=unset", run(map[string]string{"GIT_DIR": "/explicit"}))
+}
+
 // TestBashExecutor_Run_HappyPath exercises the full pipe/pump/wait flow: a
 // short bash command emits stdout and stderr lines, both are streamed to
 // onLine with the correct Stream, and Run returns nil on exit 0.
