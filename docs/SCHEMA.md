@@ -47,6 +47,10 @@ Available inside `command` and `working_dir`:
 - `{{.module_root}}` — absolute path to the current module.
 - `{{.module_path}}` — module path relative to the repo root.
 - `{{.module_name}}` — basename of the module.
+- `{{.git_dir}}` — absolute path to this checkout's git directory (the
+  per-worktree directory in a linked worktree).
+- `{{.git_common_dir}}` — absolute path to the git directory shared by all
+  worktrees. Mount it into containers that inspect the repository.
 
 ## JSON event stream
 

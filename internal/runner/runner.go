@@ -430,6 +430,33 @@ func emitModuleSkips(sink Sink, task string, modules []string, reason string) {
 // and either nothing (caller emits task_completed) or an error message.
 func runOne(ctx context.Context, pt *PlannedTask, module, repoRoot string, opts Options, exec Executor, sink Sink) error {
 	vars := NewTemplateVars(repoRoot, module)
+	if usesGitDirs(pt.Task.Command, pt.Task.WorkingDir) {
+		gitDir, commonDir, err := git.GitDirs(repoRoot)
+		if err != nil {
+			err = fmt.Errorf("resolving git directories for template variables: %w", err)
+			// Sinks open a task block on task_started, so the failure line
+			// needs one even though nothing expanded or ran.
+			sink.Emit(Event{
+				Kind:       EventTaskStarted,
+				Time:       time.Now(),
+				Task:       pt.Task.Name,
+				Module:     module,
+				Command:    pt.Task.Command,
+				WorkingDir: pt.Task.WorkingDir,
+			})
+			sink.Emit(Event{
+				Kind:    EventLine,
+				Time:    time.Now(),
+				Task:    pt.Task.Name,
+				Module:  module,
+				Stream:  StreamStderr,
+				Text:    "[prenup] command failed: " + err.Error(),
+				Message: err.Error(),
+			})
+			return err
+		}
+		vars.GitDir, vars.GitCommonDir = gitDir, commonDir
+	}
 	command := vars.Expand(pt.Task.Command)
 
 	workingDir := pt.Task.WorkingDir

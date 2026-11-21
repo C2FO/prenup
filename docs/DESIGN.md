@@ -226,6 +226,12 @@ convert from.
 | `{{.module_root}}` | Absolute path to the current module. |
 | `{{.module_path}}` | Relative path to the module from the repo root. |
 | `{{.module_name}}` | Basename of the module directory. |
+| `{{.git_dir}}` | Absolute path to this checkout's git directory (`<repo>/.git`, or `<common>/worktrees/<name>` in a linked worktree). |
+| `{{.git_common_dir}}` | Absolute path to the git directory shared by all worktrees. |
+
+`{{.git_dir}}` and `{{.git_common_dir}}` are resolved with `git rev-parse` only
+for tasks whose `command` or `working_dir` references them; a resolution
+failure fails the task before it runs.
 
 ## 6. Behavioral Requirements
 
