@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/c2fo/prenup/internal/lock"
 )
 
 // TestDefaultRunOptions pins the zero value contract: the returned struct is
@@ -180,6 +182,37 @@ func (s *AcquireRepoLockTestSuite) TestAcquireAndRelease() {
 	release2, err := acquireRepoLock(s.repo, false)
 	s.Require().NoError(err)
 	release2()
+}
+
+// TestContendedMessageNamesWorktreeLockFile pins that, from a linked
+// worktree, the contention error names the lock file actually held (under
+// the worktree's git dir) and exits 1.
+func (s *AcquireRepoLockTestSuite) TestContendedMessageNamesWorktreeLockFile() {
+	s.T().Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	s.T().Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	wt := filepath.Join(s.T().TempDir(), "wt")
+	for _, args := range [][]string{
+		{"-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--allow-empty", "-m", "init"},
+		{"worktree", "add", "-b", "feat", wt},
+	} {
+		cmd := exec.Command("git", args...) //nolint:gosec // G204: fixed binary, test-controlled args.
+		cmd.Dir = s.repo
+		out, err := cmd.CombinedOutput()
+		s.Require().NoErrorf(err, "git %v: %s", args, string(out))
+	}
+
+	release, err := acquireRepoLock(wt, false)
+	s.Require().NoError(err)
+	defer release()
+
+	_, err = acquireRepoLock(wt, false)
+	s.Require().Error(err)
+	var exitErr *exitCodeError
+	s.Require().ErrorAs(err, &exitErr)
+	s.Equal(1, exitErr.code)
+	s.Require().ErrorIs(err, lock.ErrContended)
+	s.Contains(err.Error(), filepath.Join("worktrees", "wt", lock.LockFileName))
+	s.NotContains(err.Error(), filepath.Join(wt, ".git", lock.LockFileName))
 }
 
 func TestAcquireRepoLockSuite(t *testing.T) {

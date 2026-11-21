@@ -152,16 +152,23 @@ Available inside `command` and `working_dir`:
 | `{{.git_dir}}` | Absolute path to this checkout's git directory (`<repo>/.git`, or `<common>/worktrees/<name>` in a linked worktree). Resolved only when referenced. |
 | `{{.git_common_dir}}` | Absolute path to the git directory shared by all worktrees (the main checkout's `.git`). Resolved only when referenced. |
 
-For containerized git tasks, mount the common dir at its own path so a linked
-worktree's `.git` file resolves inside the container:
+Values are substituted verbatim into the command that `bash -c` runs, so a
+path containing shell metacharacters (`$`, backticks) is interpreted by the
+shell. For containerized git tasks, resolve the paths in the shell instead and
+mount the checkout and the common git directory at their host paths, so a
+linked worktree's (or submodule's) `.git` file resolves inside the container
+whether its `gitdir:` is absolute or relative:
 
 ```yaml
-command: docker run --rm -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}" image cmd
+command: |
+  R=$(git rev-parse --show-toplevel)
+  C=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+  docker run --rm -v "$R:$R" -v "$C:$C" image cmd --repo-root "$R"
 ```
 
-This assumes git writes absolute `gitdir:` paths (the default); with
-`worktree.useRelativePaths=true` the relative link will not resolve under
-`/workspace`.
+`{{.git_dir}}` and `{{.git_common_dir}}` are available when the paths are known
+to be plain and the installed prenup is v0.2.0 or later; older binaries leave
+them unexpanded.
 
 ## Behavior
 

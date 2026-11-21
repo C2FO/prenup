@@ -6,11 +6,44 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/c2fo/prenup/internal/lock"
 )
 
 // StashMessagePrefix tags prenup-created stashes so we can identify and pop
 // them even if the user creates other stashes in the meantime.
 const StashMessagePrefix = "prenup:autostash"
+
+const (
+	// stashLockName is the lock file, inside the common git directory, that
+	// serializes prenup stash operations across all linked worktrees.
+	stashLockName = "prenup-stash.lock"
+	// stashLockWait bounds how long a stash operation waits for another
+	// worktree's prenup to finish its own. Each holder only runs a handful of
+	// git commands, so contention clears quickly.
+	stashLockWait = 30 * time.Second
+)
+
+// lockStash serializes stash operations across every worktree of the
+// repository. refs/stash lives in the common git directory and is shared by
+// all worktrees, so the per-worktree run lock cannot protect it: without
+// this, one worktree's `stash pop stash@{N}` can apply another worktree's
+// stash after the indices shift. The returned func releases the lock.
+func (r *Runner) lockStash() (func(), error) {
+	_, commonDir, err := GitDirs(r.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("locating common git dir for stash lock: %w", err)
+	}
+	wait := r.stashLockWait
+	if wait == 0 {
+		wait = stashLockWait
+	}
+	l, err := lock.AcquireDir(commonDir, stashLockName, wait)
+	if err != nil {
+		return nil, fmt.Errorf("timed out after %s waiting for another worktree's prenup to finish its stash operation: %w", wait, err)
+	}
+	return func() { _ = l.Close() }, nil
+}
 
 // Stash represents a prenup-managed stash that must be restored.
 type Stash struct {
@@ -27,6 +60,8 @@ type Stash struct {
 // If the worktree is clean, Push returns a zero-value Stash whose Pop is a
 // no-op. Untracked files are included so they can't leak into task runs.
 func (r *Runner) Push() (*Stash, error) {
+	// The dirty check only reads this worktree, so it stays outside the shared
+	// lock: a clean worktree never waits on, or blocks, another worktree.
 	dirty, err := r.HasUnstagedChanges()
 	if err != nil {
 		return nil, fmt.Errorf("detecting unstaged changes: %w", err)
@@ -34,6 +69,12 @@ func (r *Runner) Push() (*Stash, error) {
 	if !dirty {
 		return &Stash{runner: r}, nil
 	}
+
+	unlock, err := r.lockStash()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 
 	// Combine nanoseconds with a small random suffix so back-to-back stashes
 	// (e.g. tests, retries) cannot collide on the same message.
@@ -58,8 +99,15 @@ func (s *Stash) Pop() error {
 	if s == nil || !s.active {
 		return nil
 	}
+	unlock, err := s.runner.lockStash()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	// Use the recorded message to re-locate the stash, since running tasks
-	// may have added other stashes in between.
+	// may have added other stashes in between. Holding the lock keeps the
+	// index found here valid until the pop below.
 	ref, err := s.runner.findStashRef(s.Message)
 	if err != nil {
 		return err

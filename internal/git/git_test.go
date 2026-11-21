@@ -1,13 +1,18 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/c2fo/prenup/internal/lock"
 )
 
 // GitTestSuite groups behavioral tests for the git wrapper. Every method
@@ -131,9 +136,111 @@ func (s *GitTestSuite) TestStashPushPopRestoresDirtyWorktree() {
 	s.Contains(untracked, "new.txt")
 }
 
+// TestStashConcurrentAcrossWorktrees pins that prenup stashes taken from
+// several linked worktrees at once (refs/stash is shared by all of them)
+// never fail and always restore each worktree's own changes, never another
+// worktree's.
+func (s *GitTestSuite) TestStashConcurrentAcrossWorktrees() {
+	const worktrees, rounds = 6, 25
+
+	runners := []*Runner{s.r}
+	dirs := []string{s.repo}
+	for i := 1; i < worktrees; i++ {
+		wt := filepath.Join(s.T().TempDir(), "wt")
+		s.runGit(s.repo, "worktree", "add", "-b", "feat"+string(rune('a'+i)), wt)
+		runners = append(runners, New(wt))
+		dirs = append(dirs, wt)
+	}
+
+	errs := make(chan error, worktrees*rounds*2)
+	var wg sync.WaitGroup
+	for i := range runners {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			want := fmt.Sprintf("changes of worktree %d\n", i)
+			path := filepath.Join(dirs[i], "README.md")
+			for range rounds {
+				if err := os.WriteFile(path, []byte(want), 0o600); err != nil {
+					errs <- err
+					return
+				}
+				stash, err := runners[i].Push()
+				if err != nil {
+					errs <- fmt.Errorf("worktree %d push: %w", i, err)
+					continue
+				}
+				if err := stash.Pop(); err != nil {
+					errs <- fmt.Errorf("worktree %d pop: %w", i, err)
+					continue
+				}
+				got, err := os.ReadFile(path) //nolint:gosec // G304: path is under a test temp dir.
+				if err != nil {
+					errs <- err
+					return
+				}
+				if string(got) != want {
+					errs <- fmt.Errorf("worktree %d restored %q, want %q", i, got, want)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	var failures []string
+	for err := range errs {
+		failures = append(failures, err.Error())
+	}
+	s.Empty(failures, "concurrent stash push/pop across worktrees must not fail or cross-restore")
+}
+
 // TestStashPushNoopOnCleanWorktree pins that the wrapper handles the
 // nothing-to-stash case gracefully -- prenup runs on every commit, so
 // a panic or error here would block clean-worktree commits.
+func (s *GitTestSuite) TestStashLockTimeout() {
+	s.writeFile("README.md", "dirty\n")
+	_, commonDir, err := GitDirs(s.repo)
+	s.Require().NoError(err)
+	held, err := lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+
+	r := &Runner{Dir: s.repo, stashLockWait: 100 * time.Millisecond}
+	_, err = r.Push()
+	s.Require().ErrorIs(err, lock.ErrContended)
+	s.Contains(err.Error(), "waiting for another worktree")
+
+	s.Require().NoError(held.Close())
+	st, err := r.Push()
+	s.Require().NoError(err)
+
+	held, err = lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+	s.Require().ErrorIs(st.Pop(), lock.ErrContended)
+	s.Require().NoError(held.Close())
+	s.Require().NoError(st.Pop())
+}
+
+func (s *GitTestSuite) TestStashCleanWorktreeSkipsLock() {
+	_, commonDir, err := GitDirs(s.repo)
+	s.Require().NoError(err)
+	held, err := lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+	defer func() { _ = held.Close() }()
+
+	r := &Runner{Dir: s.repo, stashLockWait: 50 * time.Millisecond}
+	st, err := r.Push()
+	s.Require().NoError(err)
+	s.Require().NoError(st.Pop())
+}
+
+func (s *GitTestSuite) TestStashGitDirsError() {
+	r := &Runner{Dir: s.T().TempDir()}
+	_, err := r.lockStash()
+	s.Require().Error(err)
+	s.Contains(err.Error(), "locating common git dir")
+}
+
 func (s *GitTestSuite) TestStashPushNoopOnCleanWorktree() {
 	stash, err := s.r.Push()
 	s.Require().NoError(err)

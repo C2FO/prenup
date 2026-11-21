@@ -37,9 +37,14 @@ tasks:
     # images ship. Cost is one HTTP HEAD per invocation; layers stay
     # cached so re-downloads only happen on a real version bump.
     #
-    # The extra mount of {{.git_common_dir}} (at the same absolute
-    # path) is what makes this work from a linked worktree: there,
-    # /workspace/.git is a file pointing at <common>/worktrees/<name> on the
-    # host, which must exist inside the container. In a normal checkout it is
-    # simply the repo's own .git directory.
-    command: docker run --rm --pull=always -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}" ghcr.io/c2fo/releasegen:v1 validate --repo-root /workspace
+    # The checkout and the shared git directory are both mounted at their
+    # host paths. In a linked worktree (or submodule) .git is a file that
+    # points, absolutely or relatively, into the common git directory; mounting
+    # at host paths keeps either form resolvable inside the container. The
+    # paths are resolved by the shell so this works with any installed prenup
+    # version and so unusual characters in a path are never re-parsed as shell
+    # syntax.
+    command: |
+      R=$(git rev-parse --show-toplevel)
+      C=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+      docker run --rm --pull=always -v "$R:$R" -v "$C:$C" ghcr.io/c2fo/releasegen:v1 validate --repo-root "$R"
