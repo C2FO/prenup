@@ -34,9 +34,13 @@ func (r *Runner) lockStash() (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("locating common git dir for stash lock: %w", err)
 	}
-	l, err := lock.AcquireDir(commonDir, stashLockName, stashLockWait)
+	wait := r.stashLockWait
+	if wait == 0 {
+		wait = stashLockWait
+	}
+	l, err := lock.AcquireDir(commonDir, stashLockName, wait)
 	if err != nil {
-		return nil, fmt.Errorf("waiting for shared stash lock: %w", err)
+		return nil, fmt.Errorf("timed out after %s waiting for another worktree's prenup to finish its stash operation: %w", wait, err)
 	}
 	return func() { _ = l.Close() }, nil
 }

@@ -92,7 +92,8 @@ func Acquire(repoRoot string) (*Lock, error) {
 // must be serialized across every linked worktree of a repository, such as
 // operations on the shared refs/stash, by pointing dir at the common git
 // directory. It returns a *ContendedError (matching ErrContended) if the lock
-// is still held when wait elapses.
+// is still held when wait elapses. Like Acquire, it provides no exclusion on
+// non-unix platforms.
 func AcquireDir(dir, name string, wait time.Duration) (*Lock, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("ensuring lock directory: %w", err)

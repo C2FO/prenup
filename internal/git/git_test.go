@@ -8,8 +8,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/c2fo/prenup/internal/lock"
 )
 
 // GitTestSuite groups behavioral tests for the git wrapper. Every method
@@ -195,6 +198,36 @@ func (s *GitTestSuite) TestStashConcurrentAcrossWorktrees() {
 // TestStashPushNoopOnCleanWorktree pins that the wrapper handles the
 // nothing-to-stash case gracefully -- prenup runs on every commit, so
 // a panic or error here would block clean-worktree commits.
+func (s *GitTestSuite) TestStashLockTimeout() {
+	s.writeFile("README.md", "dirty\n")
+	_, commonDir, err := GitDirs(s.repo)
+	s.Require().NoError(err)
+	held, err := lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+
+	r := &Runner{Dir: s.repo, stashLockWait: 100 * time.Millisecond}
+	_, err = r.Push()
+	s.Require().ErrorIs(err, lock.ErrContended)
+	s.Contains(err.Error(), "waiting for another worktree")
+
+	s.Require().NoError(held.Close())
+	st, err := r.Push()
+	s.Require().NoError(err)
+
+	held, err = lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+	s.Require().ErrorIs(st.Pop(), lock.ErrContended)
+	s.Require().NoError(held.Close())
+	s.Require().NoError(st.Pop())
+}
+
+func (s *GitTestSuite) TestStashGitDirsError() {
+	r := &Runner{Dir: s.T().TempDir()}
+	_, err := r.Push()
+	s.Require().Error(err)
+	s.Contains(err.Error(), "locating common git dir")
+}
+
 func (s *GitTestSuite) TestStashPushNoopOnCleanWorktree() {
 	stash, err := s.r.Push()
 	s.Require().NoError(err)

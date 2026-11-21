@@ -9,12 +9,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Runner executes git commands against a specific working directory. A zero
 // Runner uses the current working directory.
 type Runner struct {
 	Dir string
+
+	// stashLockWait overrides stashLockWait; zero means the default.
+	stashLockWait time.Duration
 }
 
 // New returns a Runner rooted at dir. If dir is empty, RepoRoot() callers will
