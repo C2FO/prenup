@@ -103,6 +103,21 @@ func (s *ChangedFilesTestSuite) TestExcludePatternDropsFiles() {
 	s.Contains(got, "keep.go")
 }
 
+// TestNestedWorktreeIgnored: an un-ignored linked worktree nested in the
+// checkout is not reported as a changed path.
+func (s *ChangedFilesTestSuite) TestNestedWorktreeIgnored() {
+	nested := filepath.Join(".claude", "worktrees", "feat")
+	cmd := exec.Command("git", "worktree", "add", "-b", "feat", nested) //nolint:gosec // G204: fixed binary, internal args.
+	cmd.Dir = s.repo
+	out, err := cmd.CombinedOutput()
+	s.Require().NoErrorf(err, "git worktree add: %s", string(out))
+	s.Require().NoError(os.WriteFile(filepath.Join(s.repo, "keep.go"), []byte("package k\n"), 0o600))
+
+	got, err := ChangedFiles(s.runner, nil)
+	s.Require().NoError(err)
+	s.Equal([]string{"keep.go"}, got)
+}
+
 // TestEmptyRepoReturnsEmpty: a clean worktree returns an empty slice, no error.
 func (s *ChangedFilesTestSuite) TestEmptyRepoReturnsEmpty() {
 	got, err := ChangedFiles(s.runner, nil)

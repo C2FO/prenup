@@ -35,10 +35,15 @@ func Modules(repoRoot string, changedFiles, markerFiles []string) []string {
 
 // findModuleRoot walks up from startDir looking for any markerFile. Returns
 // the relative path from repoRoot, or "." if the marker lives at the root.
-// Returns the empty string if no marker is found up to the repo root.
+// Returns the empty string if no marker is found up to the repo root, or if
+// the walk reaches a nested git checkout (a directory below repoRoot holding
+// its own .git) without finding one: that module belongs to another checkout.
 func findModuleRoot(repoRoot, startDir string, markerFiles []string) string {
 	current := startDir
 	for {
+		if current != "." && isNestedCheckout(repoRoot, current) {
+			return ""
+		}
 		for _, m := range markerFiles {
 			candidate := filepath.Join(repoRoot, current, m)
 			if _, err := os.Stat(candidate); err == nil {
@@ -54,4 +59,9 @@ func findModuleRoot(repoRoot, startDir string, markerFiles []string) string {
 		}
 		current = parent
 	}
+}
+
+func isNestedCheckout(repoRoot, dir string) bool {
+	_, err := os.Lstat(filepath.Join(repoRoot, dir, ".git"))
+	return err == nil
 }

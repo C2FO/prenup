@@ -52,3 +52,15 @@ func TestModulesSkipsFilesWithNoMarker(t *testing.T) {
 	mods := Modules(root, []string{"pkg/foo/bar.go"}, []string{"go.mod"})
 	assert.Empty(t, mods)
 }
+
+func TestModulesStopsAtNestedCheckout(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, ".claude", "worktrees", "feat")
+	require.NoError(t, os.MkdirAll(nested, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module n\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: x\n"), 0o600))
+
+	got := Modules(root, []string{".claude/worktrees/feat/a.go", ".claude/worktrees/feat/"}, nil)
+	assert.Empty(t, got)
+}

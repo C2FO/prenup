@@ -5,6 +5,7 @@ package discover
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 
@@ -13,7 +14,9 @@ import (
 
 // ChangedFiles returns deduplicated paths (relative to repo root) that are
 // staged, unstaged, or untracked. Paths matching any excludePattern (a
-// doublestar glob) are dropped.
+// doublestar glob) are dropped. Untracked entries with a trailing slash are
+// embedded git repositories or nested linked worktrees; they belong to a
+// different checkout and are dropped.
 func ChangedFiles(r *git.Runner, excludePatterns []string) ([]string, error) {
 	staged, err := r.StagedFiles()
 	if err != nil {
@@ -27,6 +30,8 @@ func ChangedFiles(r *git.Runner, excludePatterns []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("untracked files: %w", err)
 	}
+
+	untracked = withoutEmbeddedRepos(untracked)
 
 	seen := make(map[string]struct{})
 	all := make([]string, 0, len(staged)+len(unstaged)+len(untracked))
@@ -90,6 +95,20 @@ func FilterByPaths(files, include, exclude []string) []string {
 			continue
 		}
 		if len(exclude) > 0 && Matches(exclude, f) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// withoutEmbeddedRepos drops directory entries (trailing slash). In
+// `git ls-files --others` output the only directories listed are embedded git
+// repositories and nested worktrees.
+func withoutEmbeddedRepos(files []string) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		if strings.HasSuffix(f, "/") {
 			continue
 		}
 		out = append(out, f)
