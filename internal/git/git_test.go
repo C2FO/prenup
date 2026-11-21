@@ -104,6 +104,7 @@ func (s *GitTestSuite) TestChangedFileCategories() {
 // is neither an untracked file nor a reason to stash.
 func (s *GitTestSuite) TestNestedWorktreeIsNotUntracked() {
 	s.runGit(s.repo, "worktree", "add", "-b", "nested", filepath.Join(".claude", "worktrees", "nested"))
+	s.runGit(s.repo, "worktree", "add", "-b", "unicode", filepath.Join(".claude", "worktrees", "café"))
 
 	untracked, err := s.r.UntrackedFiles()
 	s.Require().NoError(err)

@@ -61,7 +61,15 @@ func TestModulesStopsAtNestedCheckout(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "go.mod"), []byte("module n\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: x\n"), 0o600))
 
-	got := Modules(root, []string{".claude/worktrees/feat/a.go", ".claude/worktrees/feat/"}, nil)
+	deep := filepath.Join(nested, "services", "auth")
+	require.NoError(t, os.MkdirAll(deep, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(deep, "go.mod"), []byte("module d\n"), 0o600))
+
+	got := Modules(root, []string{
+		".claude/worktrees/feat/a.go",
+		".claude/worktrees/feat/",
+		".claude/worktrees/feat/services/auth/a.go",
+	}, nil)
 	assert.Empty(t, got)
 }
 

@@ -186,14 +186,15 @@ func (r *Runner) UnstagedFiles() ([]string, error) {
 // nested linked worktrees are omitted: git lists them as directories with a
 // trailing slash, and they belong to a different checkout.
 func (r *Runner) UntrackedFiles() ([]string, error) {
-	out, err := r.run("ls-files", "--others", "--exclude-standard")
+	// -z keeps git from quoting paths with non-ASCII or control characters,
+	// which would otherwise hide the trailing slash of a nested checkout.
+	out, err := r.run("ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
-	lines := splitLines(out)
-	files := make([]string, 0, len(lines))
-	for _, f := range lines {
-		if strings.HasSuffix(f, "/") {
+	var files []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f == "" || strings.HasSuffix(f, "/") {
 			continue
 		}
 		files = append(files, f)
