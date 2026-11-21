@@ -156,10 +156,12 @@ For containerized git tasks, mount the common dir at its own path so a linked
 worktree's `.git` file resolves inside the container:
 
 ```yaml
-command: docker run --rm -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}:ro" image cmd
+command: docker run --rm -v "{{.repo_root}}:/workspace" -v "{{.git_common_dir}}:{{.git_common_dir}}" image cmd
 ```
 
-This assumes git writes absolute `gitdir:` paths (the default); with
+Mount it read-write: go-git based tools such as `releasegen` fail to open a
+repository from a read-only mount of the common dir. This also assumes git
+writes absolute `gitdir:` paths (the default); with
 `worktree.useRelativePaths=true` the relative link will not resolve under
 `/workspace`.
 
