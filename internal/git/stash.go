@@ -60,12 +60,8 @@ type Stash struct {
 // If the worktree is clean, Push returns a zero-value Stash whose Pop is a
 // no-op. Untracked files are included so they can't leak into task runs.
 func (r *Runner) Push() (*Stash, error) {
-	unlock, err := r.lockStash()
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-
+	// The dirty check only reads this worktree, so it stays outside the shared
+	// lock: a clean worktree never waits on, or blocks, another worktree.
 	dirty, err := r.HasUnstagedChanges()
 	if err != nil {
 		return nil, fmt.Errorf("detecting unstaged changes: %w", err)
@@ -73,6 +69,12 @@ func (r *Runner) Push() (*Stash, error) {
 	if !dirty {
 		return &Stash{runner: r}, nil
 	}
+
+	unlock, err := r.lockStash()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 
 	// Combine nanoseconds with a small random suffix so back-to-back stashes
 	// (e.g. tests, retries) cannot collide on the same message.

@@ -221,9 +221,22 @@ func (s *GitTestSuite) TestStashLockTimeout() {
 	s.Require().NoError(st.Pop())
 }
 
+func (s *GitTestSuite) TestStashCleanWorktreeSkipsLock() {
+	_, commonDir, err := GitDirs(s.repo)
+	s.Require().NoError(err)
+	held, err := lock.AcquireDir(commonDir, stashLockName, 0)
+	s.Require().NoError(err)
+	defer func() { _ = held.Close() }()
+
+	r := &Runner{Dir: s.repo, stashLockWait: 50 * time.Millisecond}
+	st, err := r.Push()
+	s.Require().NoError(err)
+	s.Require().NoError(st.Pop())
+}
+
 func (s *GitTestSuite) TestStashGitDirsError() {
 	r := &Runner{Dir: s.T().TempDir()}
-	_, err := r.Push()
+	_, err := r.lockStash()
 	s.Require().Error(err)
 	s.Contains(err.Error(), "locating common git dir")
 }
