@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -209,8 +208,7 @@ func acquireRepoLock(repoRoot string, dryRun bool) (func(), error) {
 	held, err := lock.Acquire(repoRoot)
 	if err != nil {
 		if errors.Is(err, lock.ErrContended) {
-			return nil, &exitCodeError{code: 1, err: fmt.Errorf(
-				"%w (lock file: %s)", err, filepath.Join(repoRoot, ".git", lock.LockFileName))}
+			return nil, &exitCodeError{code: 1, err: err}
 		}
 		return nil, err
 	}

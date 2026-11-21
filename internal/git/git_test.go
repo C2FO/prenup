@@ -1,10 +1,12 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -129,6 +131,65 @@ func (s *GitTestSuite) TestStashPushPopRestoresDirtyWorktree() {
 	untracked, err = s.r.UntrackedFiles()
 	s.Require().NoError(err)
 	s.Contains(untracked, "new.txt")
+}
+
+// TestStashConcurrentAcrossWorktrees pins that prenup stashes taken from
+// several linked worktrees at once (refs/stash is shared by all of them)
+// never fail and always restore each worktree's own changes, never another
+// worktree's.
+func (s *GitTestSuite) TestStashConcurrentAcrossWorktrees() {
+	const worktrees, rounds = 6, 25
+
+	runners := []*Runner{s.r}
+	dirs := []string{s.repo}
+	for i := 1; i < worktrees; i++ {
+		wt := filepath.Join(s.T().TempDir(), "wt")
+		s.runGit(s.repo, "worktree", "add", "-b", "feat"+string(rune('a'+i)), wt)
+		runners = append(runners, New(wt))
+		dirs = append(dirs, wt)
+	}
+
+	errs := make(chan error, worktrees*rounds*2)
+	var wg sync.WaitGroup
+	for i := range runners {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			want := fmt.Sprintf("changes of worktree %d\n", i)
+			path := filepath.Join(dirs[i], "README.md")
+			for range rounds {
+				if err := os.WriteFile(path, []byte(want), 0o600); err != nil {
+					errs <- err
+					return
+				}
+				stash, err := runners[i].Push()
+				if err != nil {
+					errs <- fmt.Errorf("worktree %d push: %w", i, err)
+					continue
+				}
+				if err := stash.Pop(); err != nil {
+					errs <- fmt.Errorf("worktree %d pop: %w", i, err)
+					continue
+				}
+				got, err := os.ReadFile(path) //nolint:gosec // G304: path is under a test temp dir.
+				if err != nil {
+					errs <- err
+					return
+				}
+				if string(got) != want {
+					errs <- fmt.Errorf("worktree %d restored %q, want %q", i, got, want)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	var failures []string
+	for err := range errs {
+		failures = append(failures, err.Error())
+	}
+	s.Empty(failures, "concurrent stash push/pop across worktrees must not fail or cross-restore")
 }
 
 // TestStashPushNoopOnCleanWorktree pins that the wrapper handles the

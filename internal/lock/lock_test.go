@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -134,4 +135,59 @@ func TestAcquireConcurrent(t *testing.T) {
 	require.Empty(t, other, "no unexpected errors")
 	require.GreaterOrEqual(t, successes, 1, "at least one acquirer must win")
 	require.Equal(t, goroutines, successes+contended, "every goroutine accounted for")
+}
+
+// TestContendedErrorNamesResolvedLockPath pins that the contention error
+// reports the lock file Acquire really used. In a linked worktree that is
+// under the worktree's git dir, not <repo>/.git/prenup.lock.
+func TestContendedErrorNamesResolvedLockPath(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	realGitDir := filepath.Join(repo, ".real-git", "worktrees", "wt")
+	require.NoError(t, os.MkdirAll(realGitDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".git"), []byte("gitdir: "+realGitDir+"\n"), 0o600))
+
+	first, err := Acquire(repo)
+	require.NoError(t, err)
+	defer func() { _ = first.Close() }()
+
+	_, err = Acquire(repo)
+	require.ErrorIs(t, err, ErrContended)
+	var ce *ContendedError
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, filepath.Join(realGitDir, LockFileName), ce.Path)
+	require.Contains(t, err.Error(), ce.Path)
+}
+
+func TestAcquireDir(t *testing.T) {
+	t.Parallel()
+
+	t.Run("waits for the holder to release", func(t *testing.T) {
+		t.Parallel()
+		dir := filepath.Join(t.TempDir(), "common")
+		first, err := AcquireDir(dir, "x.lock", 0)
+		require.NoError(t, err)
+		require.FileExists(t, first.Path())
+
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			_ = first.Close()
+		}()
+		second, err := AcquireDir(dir, "x.lock", 5*time.Second)
+		require.NoError(t, err)
+		require.NoError(t, second.Close())
+	})
+
+	t.Run("times out as contended", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		first, err := AcquireDir(dir, "x.lock", 0)
+		require.NoError(t, err)
+		defer func() { _ = first.Close() }()
+
+		start := time.Now()
+		_, err = AcquireDir(dir, "x.lock", 150*time.Millisecond)
+		require.ErrorIs(t, err, ErrContended)
+		require.GreaterOrEqual(t, time.Since(start), 150*time.Millisecond)
+	})
 }

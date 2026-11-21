@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- Concurrent runs in different linked worktrees no longer corrupt each
+  other's `clean_worktree` stash. `refs/stash` is shared across worktrees,
+  so stash push and pop are now serialized by a short-lived lock in the
+  common git directory
+  ([#7](https://github.com/C2FO/prenup/issues/7)).
+- The "another prenup run is in progress" error names the lock file that is
+  actually held, which in a linked worktree is under the worktree's git
+  directory rather than `.git/prenup.lock`
+  ([#7](https://github.com/C2FO/prenup/issues/7)).
 
 ## [[v0.2.0](https://github.com/C2FO/prenup/releases/tag/v0.2.0)] - 2026-11-21
 ### Added

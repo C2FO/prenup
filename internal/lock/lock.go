@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // LockFileName is the basename of the lock file inside .git/.
@@ -28,6 +29,24 @@ const LockFileName = "prenup.lock"
 // holding the lock. Callers should surface a friendly message and exit
 // with a non-zero status rather than block.
 var ErrContended = errors.New("another prenup run is already in progress for this repository")
+
+// ContendedError is returned when a lock is held elsewhere. It matches
+// ErrContended under errors.Is and names the lock file, which in a linked
+// worktree is not <repo>/.git/prenup.lock.
+type ContendedError struct {
+	// Path is the lock file that is held.
+	Path string
+}
+
+func (e *ContendedError) Error() string {
+	return fmt.Sprintf("%s (lock file: %s)", ErrContended.Error(), e.Path)
+}
+
+// Is reports a match for ErrContended.
+func (e *ContendedError) Is(target error) bool { return target == ErrContended }
+
+// pollInterval is how often a waiting acquirer retries a held lock.
+const pollInterval = 20 * time.Millisecond
 
 // Lock is a held advisory lock on a repository. Release with Close.
 type Lock struct {
@@ -65,22 +84,48 @@ func Acquire(repoRoot string) (*Lock, error) {
 	if err := os.MkdirAll(gitDir, 0o750); err != nil {
 		return nil, fmt.Errorf("ensuring lock directory: %w", err)
 	}
-	path := filepath.Join(gitDir, LockFileName)
+	return lockFile(filepath.Join(gitDir, LockFileName), 0)
+}
+
+// AcquireDir takes an exclusive advisory lock on dir/name, waiting up to wait
+// for a holder to release it. It is meant for short critical sections that
+// must be serialized across every linked worktree of a repository, such as
+// operations on the shared refs/stash, by pointing dir at the common git
+// directory. It returns a *ContendedError (matching ErrContended) if the lock
+// is still held when wait elapses.
+func AcquireDir(dir, name string, wait time.Duration) (*Lock, error) {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, fmt.Errorf("ensuring lock directory: %w", err)
+	}
+	return lockFile(filepath.Join(dir, name), wait)
+}
+
+// lockFile opens path (creating it) and takes the lock, retrying a held lock
+// until wait has elapsed. A zero wait fails immediately.
+func lockFile(path string, wait time.Duration) (*Lock, error) {
 	// O_CREATE so first-run users don't need a pre-existing lock file.
 	// 0600: only the user running prenup needs to read/write it.
-	// G304 suppressed: path = repoRoot/.git/prenup.lock; basename is fixed.
+	// G304 suppressed: the basename is fixed and the directory is git metadata.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("opening lock file %s: %w", path, err)
 	}
-	if err := flockNB(f); err != nil {
-		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrContended
+	deadline := time.Now().Add(wait)
+	for {
+		err := flockNB(f)
+		if err == nil {
+			return &Lock{path: path, f: f}, nil
 		}
-		return nil, fmt.Errorf("locking %s: %w", path, err)
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			_ = f.Close()
+			return nil, fmt.Errorf("locking %s: %w", path, err)
+		}
+		if !time.Now().Before(deadline) {
+			_ = f.Close()
+			return nil, &ContendedError{Path: path}
+		}
+		time.Sleep(pollInterval)
 	}
-	return &Lock{path: path, f: f}, nil
 }
 
 // Close releases the advisory lock and closes the underlying file. It is
