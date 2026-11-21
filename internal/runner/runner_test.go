@@ -446,13 +446,21 @@ func (s *RunnerTestSuite) TestGitDirTemplateVars() {
 		s.Equal(1, result.Failed)
 		s.Equal(0, calls.len(), "task must not run with unresolved git vars")
 		var msg string
+		var kinds []runner.EventKind
 		events := sink.snapshot()
 		for i := range events {
+			if events[i].Task != "T" {
+				continue
+			}
+			kinds = append(kinds, events[i].Kind)
 			if events[i].Message != "" {
 				msg = events[i].Message
 			}
 		}
 		s.Contains(msg, "resolving git directories")
+		s.Require().GreaterOrEqual(len(kinds), 2)
+		s.Equal(runner.EventTaskStarted, kinds[0], "the failure line must be preceded by task_started")
+		s.Equal(runner.EventLine, kinds[1])
 	})
 }
 

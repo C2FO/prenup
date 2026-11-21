@@ -434,6 +434,16 @@ func runOne(ctx context.Context, pt *PlannedTask, module, repoRoot string, opts 
 		gitDir, commonDir, err := git.GitDirs(repoRoot)
 		if err != nil {
 			err = fmt.Errorf("resolving git directories for template variables: %w", err)
+			// Sinks open a task block on task_started, so the failure line
+			// needs one even though nothing expanded or ran.
+			sink.Emit(Event{
+				Kind:       EventTaskStarted,
+				Time:       time.Now(),
+				Task:       pt.Task.Name,
+				Module:     module,
+				Command:    pt.Task.Command,
+				WorkingDir: pt.Task.WorkingDir,
+			})
 			sink.Emit(Event{
 				Kind:    EventLine,
 				Time:    time.Now(),
