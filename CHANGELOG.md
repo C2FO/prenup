@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually held, which in a linked worktree is under the worktree's git
   directory rather than `.git/prenup.lock`
   ([#7](https://github.com/C2FO/prenup/issues/7)).
+- The repository's own `releasegen validate` task resolves the checkout and
+  common git directory in the shell and mounts both at their host paths, so it
+  works with any installed prenup version and with relative `gitdir:` links.
+  The README example shows the same pattern and notes that template values
+  are substituted verbatim into the shell command
+  ([#13](https://github.com/C2FO/prenup/pull/13)).
 
 ## [[v0.2.0](https://github.com/C2FO/prenup/releases/tag/v0.2.0)] - 2026-11-21
 ### Added
