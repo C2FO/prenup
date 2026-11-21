@@ -37,7 +37,8 @@ func Modules(repoRoot string, changedFiles, markerFiles []string) []string {
 // the relative path from repoRoot, or "." if the marker lives at the root.
 // Returns the empty string if no marker is found up to the repo root, or if
 // the walk reaches a nested git checkout (a directory below repoRoot holding
-// its own .git) without finding one: that module belongs to another checkout.
+// its own .git). That check runs before the directory's own markers are
+// examined, because a module inside another checkout belongs to that checkout.
 func findModuleRoot(repoRoot, startDir string, markerFiles []string) string {
 	current := startDir
 	for {

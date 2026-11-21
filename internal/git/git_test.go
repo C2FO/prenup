@@ -100,6 +100,20 @@ func (s *GitTestSuite) TestChangedFileCategories() {
 	s.True(has)
 }
 
+// TestNestedWorktreeIsNotUntracked: a linked worktree nested in the checkout
+// is neither an untracked file nor a reason to stash.
+func (s *GitTestSuite) TestNestedWorktreeIsNotUntracked() {
+	s.runGit(s.repo, "worktree", "add", "-b", "nested", filepath.Join(".claude", "worktrees", "nested"))
+
+	untracked, err := s.r.UntrackedFiles()
+	s.Require().NoError(err)
+	s.Empty(untracked)
+
+	has, err := s.r.HasUnstagedChanges()
+	s.Require().NoError(err)
+	s.False(has)
+}
+
 // TestStashPushPopRestoresDirtyWorktree pins the round-trip behavior
 // prenup relies on: Push() must hide unstaged + untracked changes
 // (leaving staged content for the hook to evaluate), and Pop() must

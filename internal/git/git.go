@@ -182,13 +182,23 @@ func (r *Runner) UnstagedFiles() ([]string, error) {
 }
 
 // UntrackedFiles returns paths, relative to the repo root, that are not
-// tracked by git and not ignored by .gitignore.
+// tracked by git and not ignored by .gitignore. Embedded git repositories and
+// nested linked worktrees are omitted: git lists them as directories with a
+// trailing slash, and they belong to a different checkout.
 func (r *Runner) UntrackedFiles() ([]string, error) {
 	out, err := r.run("ls-files", "--others", "--exclude-standard")
 	if err != nil {
 		return nil, err
 	}
-	return splitLines(out), nil
+	lines := splitLines(out)
+	files := make([]string, 0, len(lines))
+	for _, f := range lines {
+		if strings.HasSuffix(f, "/") {
+			continue
+		}
+		files = append(files, f)
+	}
+	return files, nil
 }
 
 // HasUnstagedChanges returns true when the worktree has unstaged modifications

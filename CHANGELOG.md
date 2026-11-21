@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Linked worktrees or embedded git repositories nested inside the checkout
   (for example `.claude/worktrees/<name>/`) are no longer treated as changed
-  files or discovered as modules of the parent checkout
+  files, discovered as modules of the parent checkout, or counted as dirty
+  when deciding whether to stash
   ([#8](https://github.com/C2FO/prenup/issues/8)).
 
 ## [[v0.2.1](https://github.com/C2FO/prenup/releases/tag/v0.2.1)] - 2026-11-21
