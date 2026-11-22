@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [[v0.3.0](https://github.com/C2FO/prenup/releases/tag/v0.3.0)] - 2026-11-22
 ### Security
 - The `ci.yml` and `go-test-coverage.yml` workflows now declare explicit
   least-privilege `permissions: contents: read` instead of inheriting the
