@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- The `ci.yml` and `go-test-coverage.yml` workflows now declare explicit
+  least-privilege `permissions: contents: read` instead of inheriting the
+  repository default token permissions
+
 ## [[v0.2.2](https://github.com/C2FO/prenup/releases/tag/v0.2.2)] - 2026-11-22
 ### Fixed
 - Linked worktrees or embedded git repositories nested inside the checkout
